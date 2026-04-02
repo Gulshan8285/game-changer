@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  password      String?
+  phone         String?
+  avatar        String?
+  accountNo     String?
+  accountNo2    String?
+  ifscCode      String?
+  bankName      String?
+  upiId         String?
+  address       String?
+  city          String?
+  state         String?
+  pincode       String?
+  termsAccepted Boolean  @default(false)
+  isGoogleAuth  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments     PaymentRequest[]
+  withdrawals  WithdrawalRequest[]
+}
+
+model InvestmentPlan {
+  id          String   @id @default(cuid())
+  name        String
+  price       Int
+  daily       Int
+  monthly     Int
+  totalReturn Int
+  color       String   @default("bg-emerald-500")
+  iconBg      String   @default("bg-emerald-500/20")
+  iconColor   String   @default("text-emerald-400")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PaymentRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  userName    String
+  userEmail   String
+  planId      String
+  planName    String
+  amount      Int
+  status      String   @default("pending")
+  adminNote   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model WithdrawalRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  userName    String
+  userEmail   String
+  amount      Int
+  status      String   @default("pending")
+  adminNote   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AdminNotification {
+  id          String   @id @default(cuid())
+  title       String
+  message     String
+  type        String   @default("info")
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model SiteContent {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  updatedAt DateTime @updatedAt
+}
+
+model AdminAuth {
+  id       String   @id @default(cuid())
+  username String   @unique
+  password String
+}

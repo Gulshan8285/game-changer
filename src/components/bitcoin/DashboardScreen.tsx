@@ -1,0 +1,1890 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+import { useAppStore } from '@/store/useAppStore';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Bitcoin, TrendingUp, TrendingDown, BarChart3, Wallet, ArrowUpRight, ArrowDownRight, ArrowLeft, RefreshCw, User, Bell, History, Shield, Zap, IndianRupee, Calendar, CircleDollarSign, CheckCircle2, Sun, Moon, X, Timer, Clock } from 'lucide-react';
+import { useTheme } from 'next-themes';
+
+// ── Animated Mini Sparkline for crypto coin rows ──
+const AnimatedSparkline = memo(function AnimatedSparkline({ data, color }: { data: number[]; color: string }) {
+  const [prices, setPrices] = useState(data);
+  const [displayPrices, setDisplayPrices] = useState(data);
+  const prevRef = useRef(data);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPrices((prev) => {
+        prevRef.current = prev;
+        const last = prev[prev.length - 1];
+        const noise = (Math.random() - 0.5) * (Math.abs(last) * 0.004);
+        return [...prev.slice(1), last + noise];
+      });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [data]);
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    if (prev.length !== prices.length) return;
+    let start: number | null = null;
+    const duration = 300;
+    const anim = (ts: number) => {
+      if (!start) start = ts;
+      const progress = Math.min((ts - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const interp = prev.map((p, i) => p + (prices[i] - p) * eased);
+      setDisplayPrices(interp);
+      if (progress < 1) requestAnimationFrame(anim);
+    };
+    requestAnimationFrame(anim);
+  }, [prices]);
+
+  if (!displayPrices || displayPrices.length === 0) return null;
+
+  const min = Math.min(...displayPrices);
+  const max = Math.max(...displayPrices);
+  const range = max - min || 1;
+  const w = 80;
+  const h = 32;
+  const pad = 2;
+
+  const points = displayPrices.map((p, i) => {
+    const x = pad + (i / (displayPrices.length - 1)) * (w - 2 * pad);
+    const y = h - pad - ((p - min) / range) * (h - 2 * pad);
+    return `${x},${y}`;
+  });
+
+  const areaPath = `M${points.join(' L')} L${pad + ((displayPrices.length - 1) / (displayPrices.length - 1)) * (w - 2 * pad)},${h - pad} L${pad},${h - pad} Z`;
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full">
+      <defs>
+        <linearGradient id={`spark-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill={`url(#spark-${color.replace('#', '')})`} />
+      <path d={`M${points.join(' L')}`} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+});
+
+// ── Generate sparkline data for coins ──
+function generateSparkData(base: number, volatility: number, trend: number) {
+  const pts: number[] = [];
+  let p = base;
+  for (let i = 0; i < 20; i++) {
+    p += (Math.random() - 0.5 + trend * 0.1) * volatility;
+    pts.push(p);
+  }
+  return pts;
+}
+
+// ── 10 Crypto coins data (Bitcoin excluded — shown in main card above) ──
+const CRYPTO_COINS = [
+  { name: 'Ethereum', symbol: 'ETH', icon: 'Ξ', bgColor: '#627eea', price: 241500, change24h: 2.35 },
+  { name: 'BNB', symbol: 'BNB', icon: 'B', bgColor: '#f3ba2f', price: 58200, change24h: 1.12 },
+  { name: 'Solana', symbol: 'SOL', icon: 'S', bgColor: '#9945ff', price: 14200, change24h: -1.85 },
+  { name: 'XRP', symbol: 'XRP', icon: 'X', bgColor: '#00aae4', price: 48.5, change24h: 0.92 },
+  { name: 'Cardano', symbol: 'ADA', icon: 'A', bgColor: '#0033ad', price: 52.3, change24h: -2.14 },
+  { name: 'Dogecoin', symbol: 'DOGE', icon: 'Ð', bgColor: '#c2a633', price: 16.8, change24h: 3.45 },
+  { name: 'Polkadot', symbol: 'DOT', icon: '●', bgColor: '#e6007a', price: 580, change24h: -0.47 },
+  { name: 'Polygon', symbol: 'MATIC', icon: 'M', bgColor: '#8247e5', price: 42.6, change24h: 1.78 },
+  { name: 'Avalanche', symbol: 'AVAX', icon: '▲', bgColor: '#e84142', price: 2650, change24h: -1.23 },
+  { name: 'Shiba Inu', symbol: 'SHIB', icon: 'S', bgColor: '#ffa409', price: 0.00142, change24h: 4.67 },
+].map((c) => ({
+  ...c,
+  sparkData: generateSparkData(100, 5, c.change24h > 0 ? 0.3 : -0.3),
+  priceDisplay: c.price >= 1
+    ? '₹' + c.price.toLocaleString('en-IN', { maximumFractionDigits: c.price >= 1000 ? 0 : 2 })
+    : '₹' + c.price.toFixed(6),
+}));
+
+// ── Live Line Chart with auto-scrolling animation ──
+const LiveChart = memo(function LiveChart({ basePrice, changePercent }: { basePrice: number; changePercent: number }) {
+  // Build 60 data points: start from price adjusted by -changePercent, end at basePrice
+  const [prices, setPrices] = useState<number[]>(() => {
+    const pts: number[] = [];
+    // Calculate start price: if change is -2%, start was ~2% higher than current
+    const startPrice = basePrice / (1 + changePercent / 100);
+    const totalPoints = 60;
+    for (let i = 0; i < totalPoints - 1; i++) {
+      // Interpolate with noise for realistic look
+      const progress = i / (totalPoints - 1);
+      const base = startPrice + (basePrice - startPrice) * progress;
+      const noise = (Math.random() - 0.5) * basePrice * 0.0015;
+      pts.push(base + noise);
+    }
+    // Last point is exactly the current price
+    pts.push(basePrice);
+    return pts;
+  });
+  const prevPricesRef = useRef(prices);
+  const [displayPrices, setDisplayPrices] = useState(prices);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPrices((prev) => {
+        prevPricesRef.current = prev;
+        // Shift left, add new point at current live price with tiny noise
+        const noise = (Math.random() - 0.5) * basePrice * 0.0003;
+        const newPrices = [...prev.slice(1), basePrice + noise];
+        return newPrices;
+      });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [basePrice]);
+
+  // Smooth interpolation between old and new prices for animation
+  useEffect(() => {
+    const prev = prevPricesRef.current;
+    if (prev.length !== prices.length) return;
+
+    let start: number | null = null;
+    const duration = 500;
+    const anim = (ts: number) => {
+      if (!start) start = ts;
+      const progress = Math.min((ts - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      const interp = prev.map((p, i) => p + (prices[i] - p) * eased);
+      setDisplayPrices(interp);
+      if (progress < 1) requestAnimationFrame(anim);
+    };
+    requestAnimationFrame(anim);
+  }, [prices]);
+
+  if (!displayPrices || displayPrices.length === 0) return null;
+
+  const min = Math.min(...displayPrices);
+  const max = Math.max(...displayPrices);
+  const range = max - min || 1;
+  const width = 400;
+  const height = 160;
+  const padding = 10;
+
+  const points = displayPrices.map((p, i) => {
+    const x = padding + (i / (displayPrices.length - 1)) * (width - 2 * padding);
+    const y = height - padding - ((p - min) / range) * (height - 2 * padding);
+    return { x, y };
+  });
+
+  const lastPoint = points[points.length - 1];
+  const isPositive = displayPrices[displayPrices.length - 1] >= displayPrices[0];
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const areaPath = `${linePath} L${width - padding},${height - padding} L${padding},${height - padding} Z`;
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-40 sm:h-48">
+      <defs>
+        <linearGradient id="liveChartGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={isPositive ? '#f59e0b' : '#ef4444'} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={isPositive ? '#f59e0b' : '#ef4444'} stopOpacity="0" />
+        </linearGradient>
+        <radialGradient id="liveDotGlow">
+          <stop offset="0%" stopColor={isPositive ? '#f59e0b' : '#ef4444'} stopOpacity="0.6" />
+          <stop offset="100%" stopColor={isPositive ? '#f59e0b' : '#ef4444'} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      {/* Area fill */}
+      <path d={areaPath} fill="url(#liveChartGradient)" />
+      {/* Line */}
+      <path d={linePath} fill="none" stroke={isPositive ? '#f59e0b' : '#ef4444'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Glow dot at the end (current price) */}
+      <circle cx={lastPoint.x} cy={lastPoint.y} r="12" fill="url(#liveDotGlow)" />
+      <circle cx={lastPoint.x} cy={lastPoint.y} r="4" fill={isPositive ? '#f59e0b' : '#ef4444'} stroke="#0a0a0a" strokeWidth="2" className="dark:stroke-[#0a0a0a] stroke-white" />
+      {/* Price label at the end — matches the displayed price above */}
+      <text x={lastPoint.x} y={lastPoint.y - 14} textAnchor="end" fill={isPositive ? '#f59e0b' : '#ef4444'} fontSize="9" fontWeight="bold">
+        {'₹' + basePrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+      </text>
+    </svg>
+  );
+});
+
+// ── Live Candlestick Chart with auto-animation ──
+const LiveCandlestickChart = memo(function LiveCandlestickChart({ basePrice, changePercent }: { basePrice: number; changePercent: number }) {
+  const isUp = changePercent >= 0;
+  const [candles, setCandles] = useState(() => {
+    const c: { open: number; close: number; high: number; low: number }[] = [];
+    // Start price derived from changePercent so chart matches the % shown
+    const startPrice = basePrice / (1 + changePercent / 100);
+    const totalPoints = 48;
+    let p = startPrice;
+    for (let i = 0; i < totalPoints - 1; i++) {
+      const progress = i / (totalPoints - 1);
+      const targetClose = startPrice + (basePrice - startPrice) * (progress + 1 / totalPoints);
+      const change = (targetClose - p) + (Math.random() - 0.5) * basePrice * 0.001;
+      const open = p;
+      const close = open + change;
+      const high = Math.max(open, close) + Math.random() * basePrice * 0.0008;
+      const low = Math.min(open, close) - Math.random() * basePrice * 0.0008;
+      c.push({ open, close, high, low });
+      p = close;
+    }
+    // Last candle closes at current price
+    const lastOpen = p;
+    const high = Math.max(lastOpen, basePrice) + Math.random() * basePrice * 0.0005;
+    const low = Math.min(lastOpen, basePrice) - Math.random() * basePrice * 0.0005;
+    c.push({ open: lastOpen, close: basePrice, high, low });
+    return c;
+  });
+  const [prevCandles, setPrevCandles] = useState(candles);
+  const [displayCandles, setDisplayCandles] = useState(candles);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPrevCandles(candles);
+      setCandles((prev) => {
+        const lastClose = prev[prev.length - 1].close;
+        const open = lastClose;
+        // Trend follows changePercent direction
+        const bias = isUp ? 0.52 : 0.48;
+        const change = (Math.random() - bias) * basePrice * 0.002;
+        const close = open + change;
+        const high = Math.max(open, close) + Math.random() * basePrice * 0.0008;
+        const low = Math.min(open, close) - Math.random() * basePrice * 0.0008;
+        return [...prev.slice(1), { open, close, high, low }];
+      });
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [basePrice, changePercent, isUp]);
+
+  // Animate transition
+  useEffect(() => {
+    let start: number | null = null;
+    const duration = 400;
+    const anim = (ts: number) => {
+      if (!start) start = ts;
+      const progress = Math.min((ts - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const interp = prevCandles.map((pc, i) => {
+        const nc = candles[i];
+        return {
+          open: pc.open + (nc.open - pc.open) * eased,
+          close: pc.close + (nc.close - pc.close) * eased,
+          high: pc.high + (nc.high - pc.high) * eased,
+          low: pc.low + (nc.low - pc.low) * eased,
+        };
+      });
+      setDisplayCandles(interp);
+      if (progress < 1) requestAnimationFrame(anim);
+    };
+    requestAnimationFrame(anim);
+  }, [candles, prevCandles]);
+
+  if (!displayCandles || displayCandles.length === 0) return null;
+
+  const allPrices = displayCandles.flatMap((d) => [d.high, d.low]);
+  const min = Math.min(...allPrices);
+  const max = Math.max(...allPrices);
+  const range = max - min || 1;
+  const width = 400;
+  const height = 200;
+  const candleWidth = Math.max(2, (width - 20) / displayCandles.length - 1);
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-48 sm:h-56">
+      {displayCandles.map((d, i) => {
+        const x = 10 + (i / displayCandles.length) * (width - 20);
+        const highY = height - 10 - ((d.high - min) / range) * (height - 20);
+        const lowY = height - 10 - ((d.low - min) / range) * (height - 20);
+        const openY = height - 10 - ((d.open - min) / range) * (height - 20);
+        const closeY = height - 10 - ((d.close - min) / range) * (height - 20);
+        const isGreen = d.close >= d.open;
+        const isLast = i === displayCandles.length - 1;
+
+        return (
+          <g key={i} opacity={isLast ? 1 : 0.85}>
+            <line x1={x} y1={highY} x2={x} y2={lowY} stroke={isGreen ? '#22c55e' : '#ef4444'} strokeWidth="1" />
+            <rect
+              x={x - candleWidth / 2}
+              y={Math.min(openY, closeY)}
+              width={candleWidth}
+              height={Math.max(1, Math.abs(closeY - openY))}
+              fill={isGreen ? '#22c55e' : '#ef4444'}
+              rx="0.5"
+            />
+            {/* Pulse glow on last candle */}
+            {isLast && (
+              <rect
+                x={x - candleWidth / 2 - 2}
+                y={Math.min(openY, closeY) - 2}
+                width={candleWidth + 4}
+                height={Math.max(3, Math.abs(closeY - openY)) + 4}
+                fill="none"
+                stroke={isGreen ? '#22c55e' : '#ef4444'}
+                strokeWidth="1"
+                opacity="0.4"
+                rx="1"
+              />
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+});
+
+// ── Animated Number Component ──
+const AnimatedNumber = memo(function AnimatedNumber({ value, decimals = 2, prefix = '', suffix = '' }: { value: number; decimals?: number; prefix?: string; suffix?: string }) {
+  const [display, setDisplay] = useState(value);
+  const targetRef = useRef(value);
+  const currentRef = useRef(value);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    targetRef.current = value;
+    const start = currentRef.current;
+    const diff = value - start;
+    if (Math.abs(diff) < 0.01) return;
+
+    let startTime: number | null = null;
+    const duration = 600;
+
+    const step = (ts: number) => {
+      if (!startTime) startTime = ts;
+      const progress = Math.min((ts - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = start + diff * eased;
+      currentRef.current = current;
+      setDisplay(current);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value]);
+
+  const formatted = display.toLocaleString('en-IN', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+  return <>{prefix}{formatted}{suffix}</>;
+});
+
+// ── Helper: format ms remaining into HH:MM:SS ──
+function formatCountdown(ms: number): string {
+  const totalSecs = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+export default function DashboardScreen() {
+  const { theme, setTheme } = useTheme();
+  const [chartType, setChartType] = useState<'line' | 'candle'>('line');
+  const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('30d');
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [investing, setInvesting] = useState(false);
+  const [investSuccess, setInvestSuccess] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
+  const [showAllCoins, setShowAllCoins] = useState(false);
+  const [showInvestPlans, setShowInvestPlans] = useState(false);
+  // showWallet/showHistory removed — now using store's dashboardView
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+  
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [historyFilter, setHistoryFilter] = useState('all');
+
+  // ── User's active investments (stored in localStorage) ──
+  const [investments, setInvestments] = useState<any[]>([]);
+  const [countdowns, setCountdowns] = useState<Record<number, string>>({});
+  const [investmentsReady, setInvestmentsReady] = useState(false);
+  const investmentsRef = useRef(investments);
+  investmentsRef.current = investments;
+  const transactionsRef = useRef(transactions);
+  transactionsRef.current = transactions;
+  const notificationsRef = useRef(notifications);
+  notificationsRef.current = notifications;
+
+  const saveInvestments = (items: any[]) => {
+    setInvestments(items);
+    localStorage.setItem('btc-wallet-investments', JSON.stringify(items));
+  };
+
+  // Load all data from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('btc-wallet-investments');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setInvestments(parsed);
+      } catch { /* ignore */ }
+    }
+    const savedTx = localStorage.getItem('btc-transactions');
+    if (savedTx) {
+      try { setTransactions(JSON.parse(savedTx)); } catch { /* ignore */ }
+    }
+    const savedNotifs = localStorage.getItem('btc-notifications');
+    if (savedNotifs) {
+      try { setNotifications(JSON.parse(savedNotifs)); } catch { /* ignore */ }
+    }
+    setInvestmentsReady(true);
+  }, []);
+
+  // ── 24-hour auto-earning system with countdown timer ──
+  useEffect(() => {
+    if (!investmentsReady) return;
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+    // Step 1: Backward-compat + credit missed earnings immediately
+    const invsCopy = JSON.parse(JSON.stringify(investmentsRef.current));
+    let needSave = false;
+    for (let i = 0; i < invsCopy.length; i++) {
+      const inv = invsCopy[i];
+      if (!inv.createdAt || !inv.lastEarningAt) {
+        needSave = true;
+        const now = new Date().toISOString();
+        invsCopy[i] = { ...inv, createdAt: now, lastEarningAt: now };
+        continue;
+      }
+      const elapsed = Date.now() - new Date(inv.lastEarningAt).getTime();
+      if (elapsed >= TWENTY_FOUR_HOURS) {
+        const cycles = Math.floor(elapsed / TWENTY_FOUR_HOURS);
+        needSave = true;
+        invsCopy[i].earned = (inv.earned || 0) + cycles * inv.daily;
+        invsCopy[i].lastEarningAt = new Date(
+          new Date(inv.lastEarningAt).getTime() + cycles * TWENTY_FOUR_HOURS
+        ).toISOString();
+        for (let c = 1; c <= cycles; c++) {
+          const cycleDate = new Date(new Date(inv.lastEarningAt).getTime() + c * TWENTY_FOUR_HOURS);
+          const tx = { id: Date.now() + Math.random() + c, type: 'earning', planName: inv.planName, amount: inv.daily, date: cycleDate.toLocaleString('en-IN'), desc: `${inv.planName} Plan - Daily Profit` };
+          setTransactions(prev => { const newTxs = [tx, ...prev]; localStorage.setItem('btc-transactions', JSON.stringify(newTxs)); return newTxs; });
+        }
+      }
+    }
+    if (needSave) saveInvestments(invsCopy);
+
+    // Step 2: Calculate initial countdowns immediately
+    const calcCountdowns = () => {
+      const invs = investmentsRef.current;
+      if (invs.length === 0) return {};
+      const cds: Record<number, string> = {};
+      for (const inv of invs) {
+        if (!inv.lastEarningAt) continue;
+        const elapsed = Date.now() - new Date(inv.lastEarningAt).getTime();
+        const remaining = TWENTY_FOUR_HOURS - elapsed;
+        cds[inv.id] = formatCountdown(remaining);
+      }
+      return cds;
+    };
+
+    // Set initial countdowns RIGHT AWAY (no 1-second delay)
+    setCountdowns(calcCountdowns());
+
+    // Step 3: 1-second interval for live countdown + auto-credit
+    const interval = setInterval(() => {
+      const invs = investmentsRef.current;
+      if (invs.length === 0) return;
+
+      const newCountdowns: Record<number, string> = {};
+      let anyCredited = false;
+      let creditedTotal = 0;
+      const updatedInvs = [...invs];
+
+      for (let i = 0; i < updatedInvs.length; i++) {
+        const inv = updatedInvs[i];
+        if (!inv.lastEarningAt) continue;
+
+        const elapsed = Date.now() - new Date(inv.lastEarningAt).getTime();
+        const remaining = TWENTY_FOUR_HOURS - elapsed;
+
+        if (remaining <= 0) {
+          // Credit earning!
+          anyCredited = true;
+          creditedTotal += inv.daily;
+          updatedInvs[i] = { ...inv, earned: inv.earned + inv.daily, lastEarningAt: new Date().toISOString() };
+          newCountdowns[inv.id] = '24:00:00';
+          const tx = { id: Date.now() + Math.random(), type: 'earning', planName: inv.planName, amount: inv.daily, date: new Date().toLocaleString('en-IN'), desc: `${inv.planName} Plan - Daily Profit` };
+          setTransactions(prev => { const newTxs = [tx, ...prev]; localStorage.setItem('btc-transactions', JSON.stringify(newTxs)); return newTxs; });
+        } else {
+          newCountdowns[inv.id] = formatCountdown(remaining);
+        }
+      }
+
+      setCountdowns(newCountdowns);
+
+      if (anyCredited) {
+        saveInvestments(updatedInvs);
+        const notif = { id: Date.now(), icon: 'CheckCircle2', title: 'Daily Profit Credited', desc: `₹${creditedTotal.toLocaleString('en-IN')} daily profit added to wallet`, time: 'Just now', dot: 'bg-emerald-500', read: false };
+        setNotifications(prev => { const n = [notif, ...prev]; localStorage.setItem('btc-notifications', JSON.stringify(n)); return n; });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [investmentsReady]);
+
+  // ── Live simulated price fluctuation ──
+  const [livePrice, setLivePrice] = useState<{ inr: number; usd: number; change24h: number } | null>(null);
+  const [liveStats, setLiveStats] = useState<{ marketCap: number; volume24h: number } | null>(null);
+
+  // ── Live coin prices for the crypto list ──
+  const [liveCoinPrices, setLiveCoinPrices] = useState<Record<string, { price: number; change: number }>>({});
+  useEffect(() => {
+    // Seed from base prices
+    const initial: Record<string, { price: number; change: number }> = {};
+    CRYPTO_COINS.forEach((c) => { initial[c.symbol] = { price: c.price, change: c.change24h }; });
+    setLiveCoinPrices(initial);
+
+    const ticker = setInterval(() => {
+      setLiveCoinPrices((prev) => {
+        const next: Record<string, { price: number; change: number }> = {};
+        CRYPTO_COINS.forEach((c) => {
+          const curr = prev[c.symbol] || { price: c.price, change: c.change24h };
+          // Small price fluctuation
+          const delta = (Math.random() - 0.48) * curr.price * 0.002;
+          const newPrice = Math.max(curr.price * 0.97, curr.price + delta);
+          // Small change % fluctuation
+          const changeDelta = (Math.random() - 0.5) * 0.08;
+          const newChange = Math.max(-8, Math.min(8, curr.change + changeDelta));
+          next[c.symbol] = { price: newPrice, change: newChange };
+        });
+        return next;
+      });
+    }, 3000);
+    return () => clearInterval(ticker);
+  }, []);
+
+  const plan1 = { name: 'Basic', investment: 5000, daily: 300, monthly: 9000, total: 14000, color: 'bg-emerald-500', iconBg: 'bg-emerald-500/20', iconColor: 'text-emerald-400', btnBg: 'bg-emerald-500 hover:bg-emerald-600' };
+  const plan2 = { name: 'Standard', investment: 8000, daily: 700, monthly: 21000, total: 29000, color: 'bg-gradient-to-r from-amber-500 to-orange-500', iconBg: 'bg-amber-500/20', iconColor: 'text-amber-400', btnBg: 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600' };
+  const plan3 = { name: 'Premium', investment: 10000, daily: 1500, monthly: 45000, total: 55000, color: 'bg-purple-500', iconBg: 'bg-purple-500/20', iconColor: 'text-purple-400', btnBg: 'bg-purple-500 hover:bg-purple-600' };
+
+  const handleInvest = async () => {
+    if (!selectedPlan || investing) return;
+    setInvesting(true);
+    // Save plan data before clearing selectedPlan
+    const planData = { ...selectedPlan };
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    setInvesting(false);
+    // Add to investments
+    const newInvestment = {
+      id: Date.now(),
+      planName: planData.name,
+      investment: planData.investment,
+      daily: planData.daily,
+      monthly: planData.monthly,
+      totalReturn: planData.total,
+      date: new Date().toLocaleDateString('en-IN'),
+      earned: 0,
+      color: planData.color,
+      iconColor: planData.iconColor,
+      iconBg: planData.iconBg,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      lastEarningAt: new Date().toISOString(),
+    };
+    saveInvestments([...investments, newInvestment]);
+    // Record transaction
+    const tx = { id: Date.now(), type: 'invest', planName: planData.name, amount: planData.investment, date: new Date().toLocaleString('en-IN'), desc: `${planData.name} Plan investment` };
+    const newTxs = [tx, ...transactions];
+    setTransactions(newTxs);
+    localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
+    // Add notification
+    const notif = { id: Date.now(), icon: 'Zap', title: 'Investment Confirmed', desc: `₹${planData.investment.toLocaleString('en-IN')} invested in ${planData.name} Plan`, time: 'Just now', dot: 'bg-amber-500', read: false };
+    const newNotifs = [notif, ...notifications];
+    setNotifications(newNotifs);
+    localStorage.setItem('btc-notifications', JSON.stringify(newNotifs));
+    setSelectedPlan(null);
+    setShowInvestPlans(false);
+    setInvestSuccess(true);
+    setTimeout(() => setInvestSuccess(false), 3000);
+  };
+  const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, logout, dashboardView, setDashboardView } = useAppStore();
+
+  // When user goes to profile from bottom nav and comes back, view stays as is
+  // This is the desired behavior - they return to where they were
+
+  const fetchBitcoinData = useCallback(async (showLoader = false) => {
+    if (showLoader) setRefreshing(true);
+    try {
+      const res = await fetch('/api/bitcoin/price');
+      if (res.ok) {
+        const data = await res.json();
+        setBitcoinData(data.price, data.historical);
+        // Seed the live simulation
+        if (!livePrice) {
+          setLivePrice({ inr: data.price.inr, usd: data.price.usd, change24h: data.price.change24h });
+          setLiveStats({ marketCap: data.price.marketCap, volume24h: data.price.volume24h });
+        }
+      }
+    } catch {
+      // Use cached data
+    } finally {
+      if (showLoader) setRefreshing(false);
+    }
+  }, [setBitcoinData, livePrice]);
+
+  useEffect(() => {
+    fetchBitcoinData();
+    const interval = setInterval(() => fetchBitcoinData(), 30000);
+    return () => clearInterval(interval);
+  }, [fetchBitcoinData]);
+
+  // ── Live price ticker: fluctuate every 2 seconds ──
+  useEffect(() => {
+    if (!bitcoinPrice) return;
+    // Seed on first load
+    if (!livePrice) {
+      setLivePrice({ inr: bitcoinPrice.inr, usd: bitcoinPrice.usd, change24h: bitcoinPrice.change24h });
+      setLiveStats({ marketCap: bitcoinPrice.marketCap, volume24h: bitcoinPrice.volume24h });
+    }
+
+    const ticker = setInterval(() => {
+      setLivePrice((prev) => {
+        if (!prev) return prev;
+        // Simulate small random fluctuation on INR price
+        const inrDelta = (Math.random() - 0.48) * bitcoinPrice.inr * 0.0008;
+        const newInr = prev.inr + inrDelta;
+        // Derive USD from INR ratio
+        const ratio = bitcoinPrice.usd / bitcoinPrice.inr;
+        const newUsd = newInr * ratio;
+        // Fluctuate change24h slightly
+        const changeDelta = (Math.random() - 0.5) * 0.06;
+        const newChange = prev.change24h + changeDelta;
+        // Clamp change to a reasonable range
+        const clampedChange = Math.max(-5, Math.min(5, newChange));
+        return { inr: newInr, usd: newUsd, change24h: clampedChange };
+      });
+      setLiveStats((prev) => {
+        if (!prev) return prev;
+        return {
+          marketCap: prev.marketCap + (Math.random() - 0.5) * bitcoinPrice.marketCap * 0.0003,
+          volume24h: prev.volume24h + (Math.random() - 0.5) * bitcoinPrice.volume24h * 0.0005,
+        };
+      });
+    }, 3000);
+    return () => clearInterval(ticker);
+  }, [bitcoinPrice]);
+
+  const formatINR = (value: number) => {
+    if (value >= 10000000) return `₹${(value / 10000000).toFixed(2)} Cr`;
+    if (value >= 100000) return `₹${(value / 100000).toFixed(2)} L`;
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+  };
+
+  const getFilteredHistory = () => {
+    if (!bitcoinHistory.length) return [];
+    if (timeRange === '24h') return bitcoinHistory.slice(-24);
+    if (timeRange === '7d') return bitcoinHistory.slice(-168);
+    return bitcoinHistory;
+  };
+
+  // Auto-scrolling activity feed
+  const activityNames = [
+    'Ramesh Kumar', 'Priya Sharma', 'Amit Patel', 'Sneha Gupta', 'Vikram Singh',
+    'Anjali Verma', 'Rahul Mehta', 'Pooja Yadav', 'Suresh Reddy', 'Kavita Joshi',
+    'Arjun Nair', 'Deepika Das', 'Manish Tiwari', 'Neha Agarwal', 'Rajesh Pillai',
+    'Swati Kulkarni', 'Sanjay Mishra', 'Ritu Saxena', 'Harish Chauhan', 'Meena Rao',
+    'Vivek Pandey', 'Suman Biswas', 'Pradeep Iyer', 'Kirti Deshmukh', 'Ashok Malhotra',
+    'Shalini Bhatt', 'Naveen Kapoor', 'Rekha Rangan', 'Sunil Shukla', 'Aparna Hegde',
+    'Dinesh Menon', 'Preeti Choudhary', 'Kiran Hegde', 'Vinod Saxena', 'Lata Nair',
+    'Ganesh Patil', 'Sunita Rawat', 'Tarun Goel', 'Madhuri Jha', 'Ravi Dubey',
+    'Usha Soni', 'Rakesh Bose', 'Anita Thakur', 'Pankaj Trivedi', 'Geeta Shukla',
+    'Prakash Verma', 'Sarita Negi', 'Manoj Goyal', 'Bhavna Saxena', 'Ramu Naik',
+  ];
+  const activityTypes = ['invest', 'withdraw', 'return'] as const;
+  const investAmounts = [5000, 8000, 10000];
+  const randomAmount = () => {
+    const amounts = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
+    return amounts[Math.floor(Math.random() * amounts.length)];
+  };
+  const randomName = () => activityNames[Math.floor(Math.random() * activityNames.length)];
+  const randomType = () => activityTypes[Math.floor(Math.random() * activityTypes.length)];
+  const randomTime = () => {
+    const mins = Math.floor(Math.random() * 60) + 1;
+    return `${mins} min ago`;
+  };
+
+  const [activityItems] = useState(() => {
+    const items: any[] = [];
+    for (let i = 0; i < 50; i++) {
+      const type = randomType();
+      let amount: number;
+      if (type === 'invest') {
+        amount = investAmounts[Math.floor(Math.random() * investAmounts.length)];
+      } else {
+        amount = randomAmount();
+      }
+      items.push({ id: i, type, name: randomName(), amount, time: randomTime() });
+    }
+    return items;
+  });
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let scrollPaused = false;
+    let scrollDirection = 1;
+    let speed = 0.6;
+    let animFrame: number;
+
+    const step = () => {
+      if (!scrollPaused) {
+        el.scrollTop += speed * scrollDirection;
+        if (el.scrollTop >= el.scrollHeight - el.clientHeight - 5) scrollDirection = -1;
+        if (el.scrollTop <= 0) scrollDirection = 1;
+      }
+      animFrame = requestAnimationFrame(step);
+    };
+    animFrame = requestAnimationFrame(step);
+
+    const handleMouseEnter = () => { scrollPaused = true; };
+    const handleMouseLeave = () => { scrollPaused = false; };
+    const handleTouchStart = () => { scrollPaused = true; };
+    const handleTouchEnd = () => { setTimeout(() => { scrollPaused = false; }, 2000); };
+
+    el.addEventListener('mouseenter', handleMouseEnter);
+    el.addEventListener('mouseleave', handleMouseLeave);
+    el.addEventListener('touchstart', handleTouchStart);
+    el.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      cancelAnimationFrame(animFrame);
+      el.removeEventListener('mouseenter', handleMouseEnter);
+      el.removeEventListener('mouseleave', handleMouseLeave);
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
+
+  // Which price to show: live simulated or API data
+  const showPrice = livePrice || bitcoinPrice;
+  const showStats = liveStats;
+  const historyFilteredTx = useMemo(() => 
+    historyFilter === 'all' ? transactions : transactions.filter(t => t.type === historyFilter),
+    [historyFilter, transactions]
+  );
+  const totalInvested = useMemo(() => investments.reduce((s, i) => s + i.investment, 0), [investments]);
+  const totalEarned = useMemo(() => investments.reduce((s, i) => s + i.earned, 0), [investments]);
+  const dailyProfit = useMemo(() => investments.reduce((s, i) => s + i.daily, 0), [investments]);
+  const unreadNotifCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+
+  // Determine which view to show
+  const currentView = dashboardView;
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-[#0a0a0a] relative overflow-hidden transition-colors duration-300">
+      {/* Background effects */}
+      <div className="fixed inset-0 pointer-events-none hidden dark:block">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-amber-500/5 rounded-full blur-[150px]" />
+      </div>
+
+      {/* Header */}
+      <header className="relative z-10 px-4 pt-5 pb-3">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Avatar className="w-10 h-10 border-2 border-amber-500/30 cursor-pointer" onClick={() => setScreen('profile')}>
+              <AvatarImage src={user?.avatar} />
+              <AvatarFallback className="bg-gradient-to-br from-amber-500 to-orange-600 text-white text-sm font-bold">
+                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">Welcome back</p>
+              <h2 className="text-zinc-900 dark:text-white font-semibold text-lg">{user?.name || 'User'}</h2>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setShowNotif(!showNotif)} className="relative p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/50 text-zinc-500 dark:text-zinc-400 hover:text-amber-500 transition-colors">
+              <Bell className="w-5 h-5" />
+              {unreadNotifCount > 0 && <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">{unreadNotifCount}</span>}
+            </button>
+            <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/50 text-zinc-500 dark:text-zinc-400 hover:text-amber-500 transition-all duration-200">
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="relative z-10 px-4 pb-24">
+        {/* WALLET VIEW */}
+        {currentView === 'wallet' && (
+        <div className="max-w-lg mx-auto space-y-4 pt-2">
+          {/* Back Button Header */}
+          <div className="flex items-center gap-3 mb-2">
+            <button onClick={() => setDashboardView('dashboard')} className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/50 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-95">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">My Wallet</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Your investments & earnings</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Balance Cards */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-4 text-white">
+              <p className="text-[10px] uppercase tracking-wider opacity-80">Total Invested</p>
+              <p className="text-xl font-bold mt-1">₹{totalInvested.toLocaleString('en-IN')}</p>
+              <p className="text-[10px] mt-1 opacity-70">{investments.length > 0 ? `${investments.length} active plan${investments.length !== 1 ? 's' : ''}` : 'No active plans'}</p>
+            </div>
+            <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-4 text-white">
+              <p className="text-[10px] uppercase tracking-wider opacity-80">Total Earnings</p>
+              <p className="text-xl font-bold mt-1">₹{totalEarned.toLocaleString('en-IN')}</p>
+              <p className="text-[10px] mt-1 opacity-70">₹{dailyProfit.toLocaleString('en-IN')}/day profit</p>
+            </div>
+          </div>
+
+          {/* Wallet Balance */}
+          <Card className="bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">Available Balance</span>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-zinc-900 dark:text-white">₹{totalEarned.toLocaleString('en-IN')}</p>
+              <button
+                onClick={() => { setShowWithdraw(true); }}
+                disabled={investments.length === 0}
+                className="mt-3 w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95 shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                Withdraw Funds
+              </button>
+            </CardContent>
+          </Card>
+
+          {/* Active Investments */}
+          <Card className="bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-500" />
+                  <p className="text-sm font-semibold text-zinc-900 dark:text-white">Active Investments</p>
+                </div>
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{investments.length} plan{investments.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {investments.length === 0 ? (
+                <div className="space-y-3">
+                  {/* Show zero-value investment cards */}
+                  {[plan1, plan2, plan3].map((plan, idx) => (
+                    <div key={idx} className="rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700/50 opacity-60">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-10 h-10 rounded-xl ${plan.iconBg} flex items-center justify-center`}>
+                            <CircleDollarSign className={`w-5 h-5 ${plan.iconColor}`} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-zinc-900 dark:text-white">{plan.name} Plan</p>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-500">Not started</p>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-400 text-[10px] font-semibold">Inactive</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Invested</p>
+                          <p className="text-xs font-bold text-zinc-900 dark:text-white">₹0</p>
+                        </div>
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Daily</p>
+                          <p className="text-xs font-bold text-zinc-400">₹0</p>
+                        </div>
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Return</p>
+                          <p className="text-xs font-bold text-zinc-400">₹0</p>
+                        </div>
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Earned</p>
+                          <p className="text-xs font-bold text-zinc-400">₹0</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-center pt-2 pb-1">
+                    <p className="text-xs text-zinc-400 dark:text-zinc-600">Invest in a plan to start earning</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {investments.map((inv) => (
+                    <div key={inv.id} className="rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-10 h-10 rounded-xl ${inv.iconBg} flex items-center justify-center`}>
+                            <CircleDollarSign className={`w-5 h-5 ${inv.iconColor}`} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-zinc-900 dark:text-white">{inv.planName} Plan</p>
+                            <p className="text-[10px] text-zinc-500">Started {inv.date}</p>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-semibold">Active</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 mb-3">
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Invested</p>
+                          <p className="text-xs font-bold text-zinc-900 dark:text-white">₹{inv.investment.toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Daily</p>
+                          <p className="text-xs font-bold text-emerald-500">₹{inv.daily.toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Total Return</p>
+                          <p className="text-xs font-bold text-amber-500">₹{inv.totalReturn.toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-zinc-500">Earned</p>
+                          <p className="text-xs font-bold text-emerald-400">₹{inv.earned.toLocaleString('en-IN')}</p>
+                        </div>
+                      </div>
+                      {/* Progress bar */}
+                      <div className="relative">
+                        <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-500 ${inv.color}`} style={{ width: `${Math.min(100, (inv.earned / inv.totalReturn) * 100)}%` }} />
+                        </div>
+                        <p className="text-[9px] text-zinc-500 mt-1 text-right">{((inv.earned / inv.totalReturn) * 100).toFixed(1)}% of ₹{inv.totalReturn.toLocaleString('en-IN')}</p>
+                      </div>
+                      {/* 24h Countdown Timer - Prominent */}
+                      <div className="mt-3 rounded-xl bg-emerald-500/8 border border-emerald-500/15 p-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Next Earning</span>
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">+₹{inv.daily}</span>
+                        </div>
+                        {/* Animated Countdown Boxes */}
+                        <div className="flex items-center justify-center gap-1">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-md bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
+                              <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">{(countdowns[inv.id] || '24:00:00').split(':')[0]}</span>
+                            </div>
+                            <span className="text-[7px] text-zinc-400 mt-0.5">HRS</span>
+                          </div>
+                          <span className="text-xs font-mono font-bold text-emerald-500 animate-pulse mb-2">:</span>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-md bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+                              <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">{(countdowns[inv.id] || '24:00:00').split(':')[1]}</span>
+                            </div>
+                            <span className="text-[7px] text-zinc-400 mt-0.5">MIN</span>
+                          </div>
+                          <span className="text-xs font-mono font-bold text-amber-500 animate-pulse mb-2">:</span>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-md bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
+                              <span className="text-xs font-mono font-bold text-orange-600 dark:text-orange-400">{(countdowns[inv.id] || '24:00:00').split(':')[2]}</span>
+                            </div>
+                            <span className="text-[7px] text-zinc-400 mt-0.5">SEC</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Transaction History placeholder */}
+          <Card className="bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <History className="w-4 h-4 text-amber-500" />
+                <p className="text-sm font-semibold text-zinc-900 dark:text-white">Recent Transactions</p>
+              </div>
+              {investments.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-sm text-zinc-400 dark:text-zinc-600">No transactions yet</p>
+                  <p className="text-[11px] text-zinc-300 dark:text-zinc-700 mt-1">Start investing to see your transaction history</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {investments.map((inv) => (
+                    <div key={`tx-${inv.id}`} className="flex items-center justify-between py-2 px-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                          <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-zinc-900 dark:text-white">{inv.planName} Plan Investment</p>
+                          <p className="text-[10px] text-zinc-500">{inv.date}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-red-400">-₹{inv.investment.toLocaleString('en-IN')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        )}
+
+        {/* HISTORY VIEW */}
+        {currentView === 'history' && (
+        <div className="max-w-lg mx-auto space-y-4 pt-2">
+          {/* Back Button Header */}
+          <div className="flex items-center gap-3 mb-2">
+            <button onClick={() => setDashboardView('dashboard')} className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/50 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-95">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <History className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Transaction History</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">All your investment activity</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Tabs */}
+          <div className="flex gap-2">
+            {['all', 'invest', 'withdraw', 'earning'].map((filter) => (
+              <button key={filter} onClick={() => setHistoryFilter(filter as any)} className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${historyFilter === filter ? 'bg-amber-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800/60 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700/50 hover:bg-zinc-200 dark:hover:bg-zinc-700/50'}`}>
+                {filter === 'all' ? 'All' : filter === 'invest' ? 'Invested' : filter === 'withdraw' ? 'Withdrawn' : 'Earnings'}
+              </button>
+            ))}
+          </div>
+
+          {/* Transaction List */}
+          <Card className="bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="max-h-[500px] overflow-y-auto">
+                {historyFilteredTx.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Wallet className="w-10 h-10 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
+                    <p className="text-sm text-zinc-400 dark:text-zinc-600">No transactions yet</p>
+                    <p className="text-[11px] text-zinc-300 dark:text-zinc-700 mt-1">Start investing to see your history</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {historyFilteredTx.map((tx) => (
+                      <div key={tx.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${tx.type === 'invest' ? 'bg-emerald-500/20' : tx.type === 'withdraw' ? 'bg-red-500/20' : 'bg-emerald-500/20'}`}>
+                            {tx.type === 'invest' ? <ArrowDownRight className="w-4 h-4 text-green-500" /> : tx.type === 'withdraw' ? <ArrowUpRight className="w-4 h-4 text-red-500" /> : <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-semibold text-zinc-900 dark:text-white">{tx.desc}</p>
+                              {tx.planName && <span className="px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-500 text-[9px] font-semibold">{tx.planName}</span>}
+                            </div>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-500">{tx.date}</p>
+                          </div>
+                        </div>
+                        {tx.type === 'earning' ? (
+                          <span className="text-xs font-bold text-emerald-500">+₹{tx.amount.toLocaleString('en-IN')}</span>
+                        ) : (
+                          <span className="text-xs font-bold text-red-400">-₹{tx.amount.toLocaleString('en-IN')}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        )}
+
+        {/* DASHBOARD VIEW */}
+        {currentView === 'dashboard' && (
+        <div className="max-w-lg mx-auto space-y-4">
+          {/* Total Earnings Summary - only show when has investments */}
+          {investments.length > 0 && (
+            <div className="rounded-2xl bg-gradient-to-r from-emerald-500/10 to-amber-500/10 border border-emerald-500/20 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                    <TrendingUp className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Total Earnings</p>
+                    <p className="text-2xl font-bold text-emerald-500">₹{totalEarned.toLocaleString('en-IN')}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Daily Profit</p>
+                  <p className="text-lg font-bold text-amber-500">₹{dailyProfit.toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+              {/* Next earning countdown for each investment - Prominent timer */}
+              <div className="mt-4 space-y-3">
+                {investments.map((inv: any) => {
+                  const cd = countdowns[inv.id] || '24:00:00';
+                  const [hh, mm, ss] = cd.split(':');
+                  return (
+                    <div key={inv.id} className="rounded-xl bg-gradient-to-r from-emerald-500/8 to-amber-500/8 border border-emerald-500/15 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                            <Timer className="w-3.5 h-3.5 text-emerald-500" />
+                          </div>
+                          <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{inv.planName} Plan</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">+₹{inv.daily}</span>
+                        </div>
+                      </div>
+                      {/* Animated Countdown Boxes */}
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Hours */}
+                        <div className="flex flex-col items-center">
+                          <div className="w-10 h-10 rounded-lg bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
+                            <span className="text-base font-mono font-bold text-emerald-600 dark:text-emerald-400">{hh}</span>
+                          </div>
+                          <span className="text-[8px] text-zinc-400 mt-1">HRS</span>
+                        </div>
+                        <span className="text-base font-mono font-bold text-emerald-500 animate-pulse mb-3">:</span>
+                        {/* Minutes */}
+                        <div className="flex flex-col items-center">
+                          <div className="w-10 h-10 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+                            <span className="text-base font-mono font-bold text-amber-600 dark:text-amber-400">{mm}</span>
+                          </div>
+                          <span className="text-[8px] text-zinc-400 mt-1">MIN</span>
+                        </div>
+                        <span className="text-base font-mono font-bold text-amber-500 animate-pulse mb-3">:</span>
+                        {/* Seconds */}
+                        <div className="flex flex-col items-center">
+                          <div className="w-10 h-10 rounded-lg bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
+                            <span className="text-base font-mono font-bold text-orange-600 dark:text-orange-400">{ss}</span>
+                          </div>
+                          <span className="text-[8px] text-zinc-400 mt-1">SEC</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Investment Plans */}
+          <div className="flex items-center gap-2 mb-1">
+            <Zap className="w-4 h-4 text-amber-500" />
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Investment Plans</h3>
+            <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]">Active</Badge>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2.5">
+            {/* Plan 1 - Basic */}
+            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-500/10 via-zinc-900/80 to-zinc-900/60 border border-emerald-500/20 p-3.5 flex flex-col">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-emerald-400" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1">Basic</span>
+              <p className="text-lg font-bold text-white">₹5,000</p>
+              <p className="text-[10px] text-zinc-500 mb-3">Investment</p>
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <IndianRupee className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-emerald-400">₹300</span>/day</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-amber-400">₹9,000</span>/month</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-zinc-700/50">
+                <p className="text-[10px] text-zinc-500 mb-0.5">Total Return</p>
+                <p className="text-sm font-bold text-emerald-400">₹14,000</p>
+              </div>
+              <button onClick={() => setSelectedPlan(plan1)} className="mt-2.5 w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
+                Invest Now
+              </button>
+            </div>
+
+            {/* Plan 2 - Standard */}
+            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-amber-500/15 via-zinc-900/80 to-zinc-900/60 border border-amber-500/30 p-3.5 flex flex-col ring-1 ring-amber-500/10">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-500 to-orange-500" />
+              <div className="absolute -top-0 -right-0">
+                <div className="bg-amber-500 text-black text-[8px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAR</div>
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1">Standard</span>
+              <p className="text-lg font-bold text-white">₹8,000</p>
+              <p className="text-[10px] text-zinc-500 mb-3">Investment</p>
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <IndianRupee className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-amber-400">₹700</span>/day</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-amber-400">₹21,000</span>/month</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-zinc-700/50">
+                <p className="text-[10px] text-zinc-500 mb-0.5">Total Return</p>
+                <p className="text-sm font-bold text-amber-400">₹29,000</p>
+              </div>
+              <button onClick={() => setSelectedPlan(plan2)} className="mt-2.5 w-full py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95 shadow-lg shadow-amber-500/20">
+                Invest Now
+              </button>
+            </div>
+
+            {/* Plan 3 - Premium */}
+            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-purple-500/10 via-zinc-900/80 to-zinc-900/60 border border-purple-500/20 p-3.5 flex flex-col">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 to-pink-500" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-1">Premium</span>
+              <p className="text-lg font-bold text-white">₹10,000</p>
+              <p className="text-[10px] text-zinc-500 mb-3">Investment</p>
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <IndianRupee className="w-3 h-3 text-purple-400 shrink-0" />
+                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-purple-400">₹1,500</span>/day</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-3 h-3 text-purple-400 shrink-0" />
+                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-purple-400">₹45,000</span>/month</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-zinc-700/50">
+                <p className="text-[10px] text-zinc-500 mb-0.5">Total Return</p>
+                <p className="text-sm font-bold text-purple-400">₹55,000</p>
+              </div>
+              <button onClick={() => setSelectedPlan(plan3)} className="mt-2.5 w-full py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
+                Invest Now
+              </button>
+            </div>
+          </div>
+
+          {/* Invest Dialog */}
+          {selectedPlan && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setSelectedPlan(null)}>
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+              <div className="relative w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-700/50 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className={`h-1.5 ${selectedPlan.color}`} />
+                <div className="p-6">
+                  <div className="text-center mb-5">
+                    <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl ${selectedPlan.iconBg} mb-3`}>
+                      <CircleDollarSign className={`w-7 h-7 ${selectedPlan.iconColor}`} />
+                    </div>
+                    <h3 className="text-xl font-bold text-white">{selectedPlan.name} Plan</h3>
+                    <p className="text-sm text-zinc-400 mt-1">Confirm your investment</p>
+                  </div>
+                  <div className="bg-zinc-800/50 rounded-xl p-4 space-y-3 mb-5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-400">Investment Amount</span>
+                      <span className="text-sm font-bold text-white">₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-400">Daily Profit</span>
+                      <span className={`text-sm font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.daily.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-zinc-400">Monthly Profit</span>
+                      <span className={`text-sm font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.monthly.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="border-t border-zinc-700/50 pt-3 flex items-center justify-between">
+                      <span className="text-sm font-medium text-zinc-300">Total Return</span>
+                      <span className={`text-lg font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.total.toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <button onClick={handleInvest} disabled={investing} className={`w-full py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
+                      {investing ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Processing...
+                        </div>
+                      ) : (
+                        `Pay ₹${selectedPlan.investment.toLocaleString('en-IN')} & Invest`
+                      )}
+                    </button>
+                    <button onClick={() => setSelectedPlan(null)} className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors text-sm font-medium">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Invest Success Toast */}
+          {investSuccess && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[101] flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-medium shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2">
+              <CheckCircle2 className="w-5 h-5" />
+              Investment successful! 🎉
+            </div>
+          )}
+
+          {/* Notification Dropdown */}
+          {showNotif && (
+            <div className="fixed inset-0 z-[100]" onClick={() => setShowNotif(false)}>
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+              <div className="absolute top-20 right-4 w-80 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[101] overflow-hidden animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Notifications</h3>
+                  <button onClick={() => setShowNotif(false)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"><X className="w-4 h-4" /></button>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Bell className="w-8 h-8 text-zinc-300 dark:text-zinc-700 mx-auto mb-2" />
+                      <p className="text-xs text-zinc-400 dark:text-zinc-600">No notifications yet</p>
+                    </div>
+                  ) : notifications.slice(0, 10).map((notif) => {
+                    const iconMap: Record<string, any> = { Zap: <Zap className="w-4 h-4 text-amber-500" />, CheckCircle2: <CheckCircle2 className="w-4 h-4 text-emerald-500" />, Shield: <Shield className="w-4 h-4 text-blue-500" />, TrendingUp: <TrendingUp className="w-4 h-4 text-emerald-500" />, Wallet: <Wallet className="w-4 h-4 text-amber-500" /> };
+                    return (
+                      <div key={notif.id} onClick={() => setNotifications(prev => { const updated = prev.map(n => n.id === notif.id ? {...n, read: true} : n); localStorage.setItem('btc-notifications', JSON.stringify(updated)); return updated; })} className={`flex gap-3 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer border-b border-zinc-50 dark:border-zinc-800/50 last:border-0 ${!notif.read ? 'bg-amber-500/5' : ''}`}>
+                        <div className="relative mt-0.5">
+                          <span className={`absolute -left-0.5 top-1.5 w-1.5 h-1.5 rounded-full ${notif.dot}`} />
+                          <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400">{iconMap[notif.icon] || <Zap className="w-4 h-4 text-amber-500" />}</div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-semibold ${!notif.read ? 'text-zinc-900 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-400'}`}>{notif.title}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-1">{notif.desc}</p>
+                          <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1">{notif.time}</p>
+                        </div>
+                        {!notif.read && <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 text-center">
+                  <button className="text-xs font-medium text-amber-500 hover:text-amber-400 transition-colors">View All Notifications</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Live Activity Feed */}
+          <div className="rounded-2xl overflow-hidden bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800/60">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Live Activity</span>
+              </div>
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-600">Auto-scrolling</span>
+            </div>
+            <div ref={scrollRef} className="h-[180px] overflow-hidden cursor-default">
+              <div className="p-2 space-y-1">
+                {activityItems.map((item) => (
+                  <div key={item.id} className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                    item.type === 'invest' ? 'bg-amber-500/5 hover:bg-amber-500/10' :
+                    item.type === 'withdraw' ? 'bg-red-500/5 hover:bg-red-500/10' :
+                    'bg-emerald-500/5 hover:bg-emerald-500/10'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                        item.type === 'invest' ? 'bg-amber-500/20 text-amber-400' :
+                        item.type === 'withdraw' ? 'bg-red-500/20 text-red-400' :
+                        'bg-emerald-500/20 text-emerald-400'
+                      }`}>
+                        {item.name.split(' ').map((n: string) => n.charAt(0)).join('')}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200">{item.name}</p>
+                        <p className="text-[10px] text-zinc-400 dark:text-zinc-600">{item.time}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      {item.type === 'invest' && (
+                        <div className="flex items-center gap-1">
+                          <ArrowDownRight className="w-3 h-3 text-amber-400" />
+                          <span className="text-xs font-semibold text-amber-400">Invested ₹{item.amount.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      {item.type === 'withdraw' && (
+                        <div className="flex items-center gap-1">
+                          <ArrowUpRight className="w-3 h-3 text-red-400" />
+                          <span className="text-xs font-semibold text-red-400">Withdraw ₹{item.amount.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      {item.type === 'return' && (
+                        <div className="flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <span className="text-xs font-semibold text-emerald-400">Return ₹{item.amount.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Bitcoin Price Card - LIVE with animated numbers */}
+          <Card className="bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm overflow-hidden">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                    <Bitcoin className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="text-zinc-900 dark:text-white font-semibold">Bitcoin (BTC)</span>
+                  <Badge variant="outline" className="text-xs bg-zinc-200 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400">BTC/INR</Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Live indicator */}
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                    </span>
+                    LIVE
+                  </span>
+                  <button onClick={() => fetchBitcoinData(true)} className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-400 hover:text-amber-500 transition-colors">
+                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {showPrice ? (
+                <>
+                  <div className="flex items-end gap-3 mb-1">
+                    <span className="text-3xl sm:text-4xl font-bold text-zinc-900 dark:text-white tracking-tight tabular-nums">
+                      <AnimatedNumber value={showPrice.inr} decimals={2} prefix="₹" />
+                    </span>
+                    <div className={`flex items-center gap-1 text-sm font-medium px-2 py-0.5 rounded-full mb-1 transition-colors duration-300 ${showPrice.change24h >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                      {showPrice.change24h >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                      <AnimatedNumber value={Math.abs(showPrice.change24h)} decimals={2} suffix="%" />
+                    </div>
+                  </div>
+                  <p className="text-zinc-500 text-xs tabular-nums">
+                    ≈ $<AnimatedNumber value={showPrice.usd} decimals={0} />
+                  </p>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-64 bg-zinc-200 dark:bg-zinc-800" />
+                  <Skeleton className="h-4 w-40 bg-zinc-200 dark:bg-zinc-800" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Chart Card - LIVE auto-moving chart */}
+          <Card className="bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardHeader className="pb-2 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <BarChart3 className="w-4 h-4 text-zinc-400" />
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Live Price Chart</span>
+                  <span className="relative flex h-1.5 w-1.5 ml-1">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500" />
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 bg-zinc-200 dark:bg-zinc-800/50 rounded-lg p-0.5">
+                  {(['line', 'candle'] as const).map((type) => (
+                    <button key={type} onClick={() => setChartType(type)} className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${chartType === type ? 'bg-amber-500 text-white' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-300'}`}>
+                      {type === 'line' ? 'Line' : 'Candle'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 mt-2">
+                {(['24h', '7d', '30d'] as const).map((range) => (
+                  <button key={range} onClick={() => setTimeRange(range)} className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${timeRange === range ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-zinc-200 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700/30 hover:text-zinc-300'}`}>
+                    {range}
+                  </button>
+                ))}
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              {showPrice ? (
+                chartType === 'line' ? (
+                  <LiveChart basePrice={showPrice.inr} changePercent={showPrice.change24h} />
+                ) : (
+                  <LiveCandlestickChart basePrice={showPrice.inr} changePercent={showPrice.change24h} />
+                )
+              ) : (
+                <Skeleton className="h-48 w-full bg-zinc-200 dark:bg-zinc-800 rounded-lg" />
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Market Stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <Card className="bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+              <CardContent className="p-4">
+                <p className="text-xs text-zinc-500 mb-1">Market Cap</p>
+                {showStats ? (
+                  <p className="text-zinc-900 dark:text-white font-semibold text-lg tabular-nums">
+                    <AnimatedNumber value={showStats.marketCap} decimals={0} prefix="₹" />
+                  </p>
+                ) : (
+                  <Skeleton className="h-6 w-28 bg-zinc-200 dark:bg-zinc-800" />
+                )}
+              </CardContent>
+            </Card>
+            <Card className="bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+              <CardContent className="p-4">
+                <p className="text-xs text-zinc-500 mb-1">24h Volume</p>
+                {showStats ? (
+                  <p className="text-zinc-900 dark:text-white font-semibold text-lg tabular-nums">
+                    <AnimatedNumber value={showStats.volume24h} decimals={0} prefix="₹" />
+                  </p>
+                ) : (
+                  <Skeleton className="h-6 w-28 bg-zinc-200 dark:bg-zinc-800" />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Top Gainers */}
+          <Card className="bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-500" />
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Top Gainers</p>
+                </div>
+                <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/25 text-[10px]">Live</Badge>
+              </div>
+              <div className="space-y-0.5">
+                {CRYPTO_COINS
+                  .filter(c => c.change24h > 0)
+                  .sort((a, b) => (liveCoinPrices[b.symbol]?.change ?? b.change24h) - (liveCoinPrices[a.symbol]?.change ?? a.change24h))
+                  .slice(0, 3)
+                  .map((coin) => (
+                  <div key={coin.symbol} className="flex items-center justify-between py-2 px-2 rounded-xl hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: coin.bgColor }}>
+                        <span className="text-sm font-bold text-white">{coin.icon}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{coin.name}</p>
+                        <p className="text-[11px] text-zinc-500">{coin.symbol}</p>
+                      </div>
+                    </div>
+                    <div className="w-16 h-7 mx-2 shrink-0">
+                      <AnimatedSparkline data={coin.sparkData} color="#22c55e" />
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-white tabular-nums">
+                        <AnimatedNumber value={liveCoinPrices[coin.symbol]?.price ?? coin.price} decimals={coin.price >= 100 ? 0 : 2} prefix="₹" />
+                      </p>
+                      <p className="text-[11px] font-medium text-emerald-400 tabular-nums">
+                        +<AnimatedNumber value={Math.abs(liveCoinPrices[coin.symbol]?.change ?? coin.change24h)} decimals={2} suffix="%" />
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Top Cryptocurrencies */}
+          <Card className="bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-amber-500" />
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Top Cryptocurrencies</p>
+                </div>
+                <button onClick={() => setShowAllCoins(!showAllCoins)} className="text-xs text-amber-500 hover:text-amber-400 transition-colors font-medium">
+                  {showAllCoins ? 'Show Less' : 'View All'}
+                </button>
+              </div>
+              <div className="space-y-0.5">
+                {CRYPTO_COINS.slice(0, showAllCoins ? CRYPTO_COINS.length : 4).map((coin) => (
+                  <div key={coin.symbol} className="flex items-center justify-between py-2.5 px-2 rounded-xl hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer">
+                    {/* Left: icon + name */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: coin.bgColor }}>
+                        <span className="text-sm font-bold text-white">{coin.icon}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{coin.name}</p>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-500">{coin.symbol}</p>
+                      </div>
+                    </div>
+                    {/* Middle: mini sparkline chart */}
+                    <div className="w-20 h-8 mx-3 shrink-0">
+                      <AnimatedSparkline data={coin.sparkData} color={coin.change24h >= 0 ? '#22c55e' : '#ef4444'} />
+                    </div>
+                    {/* Right: price + change */}
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-white tabular-nums">
+                        <AnimatedNumber
+                          value={liveCoinPrices[coin.symbol]?.price ?? coin.price}
+                          decimals={coin.price >= 100 ? 0 : coin.price >= 1 ? 2 : 6}
+                          prefix="₹"
+                        />
+                      </p>
+                      <p className={`text-[11px] font-medium tabular-nums ${liveCoinPrices[coin.symbol]?.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {liveCoinPrices[coin.symbol]?.change >= 0 ? '+' : ''}<AnimatedNumber
+                          value={Math.abs(liveCoinPrices[coin.symbol]?.change ?? coin.change24h)}
+                          decimals={2}
+                          suffix="%"
+                        />
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {!showAllCoins && (
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-600 text-center mt-2">+{CRYPTO_COINS.length - 4} more coins</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        )}
+      </main>
+
+      {/* Invest Plans Modal - opens from Quick Actions Invest button */}
+      {showInvestPlans && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center" onClick={() => setShowInvestPlans(false)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/50 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 sm:slide-in-from-top-4" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Choose Investment Plan</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Select a plan that suits your budget</p>
+              </div>
+              <button onClick={() => setShowInvestPlans(false)} className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Plans */}
+            <div className="px-5 pb-5 space-y-3 max-h-[60vh] overflow-y-auto">
+              {/* Plan 1 - Basic */}
+              <div className="relative rounded-2xl border-2 border-zinc-200 dark:border-zinc-700/50 p-4 hover:border-emerald-500/50 transition-all cursor-pointer active:scale-[0.98]" onClick={() => { setSelectedPlan(plan1); }}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                      <CircleDollarSign className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-base font-bold text-zinc-900 dark:text-white">Basic Plan</p>
+                      <p className="text-xs text-zinc-500">For beginners</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-[10px]">Popular</Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Investment</p>
+                    <p className="text-sm font-bold text-zinc-900 dark:text-white">₹5,000</p>
+                  </div>
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Daily Profit</p>
+                    <p className="text-sm font-bold text-emerald-400">₹300</p>
+                  </div>
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Total Return</p>
+                    <p className="text-sm font-bold text-emerald-400">₹14,000</p>
+                  </div>
+                </div>
+                <button className="mt-3 w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
+                  Invest ₹5,000
+                </button>
+              </div>
+
+              {/* Plan 2 - Standard */}
+              <div className="relative rounded-2xl border-2 border-amber-500/40 p-4 bg-amber-500/5 dark:bg-amber-500/5 hover:border-amber-500/70 transition-all cursor-pointer active:scale-[0.98] ring-2 ring-amber-500/10" onClick={() => { setSelectedPlan(plan2); }}>
+                <div className="absolute -top-0 right-4">
+                  <div className="bg-amber-500 text-black text-[10px] font-bold px-3 py-1 rounded-b-xl">BEST VALUE</div>
+                </div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                      <CircleDollarSign className="w-5 h-5 text-amber-400" />
+                    </div>
+                    <div>
+                      <p className="text-base font-bold text-zinc-900 dark:text-white">Standard Plan</p>
+                      <p className="text-xs text-zinc-500">Most popular</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-[10px]">Recommended</Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Investment</p>
+                    <p className="text-sm font-bold text-zinc-900 dark:text-white">₹8,000</p>
+                  </div>
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Daily Profit</p>
+                    <p className="text-sm font-bold text-amber-400">₹700</p>
+                  </div>
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Total Return</p>
+                    <p className="text-sm font-bold text-amber-400">₹29,000</p>
+                  </div>
+                </div>
+                <button className="mt-3 w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95 shadow-lg shadow-amber-500/20">
+                  Invest ₹8,000
+                </button>
+              </div>
+
+              {/* Plan 3 - Premium */}
+              <div className="relative rounded-2xl border-2 border-zinc-200 dark:border-zinc-700/50 p-4 hover:border-purple-500/50 transition-all cursor-pointer active:scale-[0.98]" onClick={() => { setSelectedPlan(plan3); }}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                      <CircleDollarSign className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="text-base font-bold text-zinc-900 dark:text-white">Premium Plan</p>
+                      <p className="text-xs text-zinc-500">Maximum returns</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-[10px]">Premium</Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Investment</p>
+                    <p className="text-sm font-bold text-zinc-900 dark:text-white">₹10,000</p>
+                  </div>
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Daily Profit</p>
+                    <p className="text-sm font-bold text-purple-400">₹1,500</p>
+                  </div>
+                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-zinc-500">Total Return</p>
+                    <p className="text-sm font-bold text-purple-400">₹55,000</p>
+                  </div>
+                </div>
+                <button className="mt-3 w-full py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
+                  Invest ₹10,000
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wallet Modal removed - now renders as full page inside main */}
+
+      {/* Withdraw Modal */}
+      {showWithdraw && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={() => setShowWithdraw(false)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/50 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4" onClick={(e) => e.stopPropagation()}>
+            <div className="h-1.5 bg-gradient-to-r from-amber-500 to-orange-500" />
+            <div className="p-6">
+              <div className="text-center mb-5">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/20 mb-3">
+                  <ArrowUpRight className="w-7 h-7 text-amber-400" />
+                </div>
+                <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Withdraw Funds</h3>
+                <p className="text-sm text-zinc-500 mt-1">Transfer earnings to your bank</p>
+              </div>
+
+              <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-zinc-500">Available Balance</span>
+                  <span className="text-sm font-bold text-emerald-500">₹{totalEarned.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm text-zinc-500">Min. Withdrawal</span>
+                  <span className="text-sm font-medium text-zinc-900 dark:text-white">₹500</span>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="text-xs text-zinc-500 mb-1.5 block">Enter Amount (₹)</label>
+                <input
+                  type="number"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="Enter withdrawal amount"
+                  className="w-full px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all placeholder:text-zinc-400"
+                />
+                {withdrawAmount && Number(withdrawAmount) > totalEarned && (
+                  <p className="text-[11px] text-red-400 mt-1">Amount exceeds available balance</p>
+                )}
+              </div>
+
+              {/* Quick amounts */}
+              <div className="flex gap-2 mb-4">
+                {[500, 1000, 2000, 5000].map((amt) => (
+                  <button key={amt} onClick={() => setWithdrawAmount(String(amt))} className="flex-1 py-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all">
+                    ₹{amt.toLocaleString('en-IN')}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={async () => {
+                  if (!withdrawAmount || Number(withdrawAmount) < 500) return;
+                  const wAmt = Number(withdrawAmount);
+                  setWithdrawing(true);
+                  await new Promise((r) => setTimeout(r, 2500));
+                  setWithdrawing(false);
+                  // Record withdrawal transaction
+                  const tx = { id: Date.now(), type: 'withdraw', amount: wAmt, date: new Date().toLocaleString('en-IN'), desc: 'Withdrawal to bank account' };
+                  const newTxs = [tx, ...transactions];
+                  setTransactions(newTxs);
+                  localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
+                  // Add notification
+                  const notif = { id: Date.now(), icon: 'Wallet', title: 'Withdrawal Processed', desc: `₹${wAmt.toLocaleString('en-IN')} sent to your bank account`, time: 'Just now', dot: 'bg-amber-500', read: false };
+                  const newNotifs = [notif, ...notifications];
+                  setNotifications(newNotifs);
+                  localStorage.setItem('btc-notifications', JSON.stringify(newNotifs));
+                  setWithdrawAmount('');
+                  setShowWithdraw(false);
+                  setWithdrawSuccess(true);
+                  setTimeout(() => setWithdrawSuccess(false), 3000);
+                }}
+                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < 500 || Number(withdrawAmount) > totalEarned}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {withdrawing ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Processing...
+                  </div>
+                ) : (
+                  `Withdraw ₹${Number(withdrawAmount || 0).toLocaleString('en-IN')}`
+                )}
+              </button>
+              <button onClick={() => { setShowWithdraw(false); setWithdrawAmount(''); }} className="w-full py-3 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors text-sm font-medium mt-2">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw Success Toast */}
+      {withdrawSuccess && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-medium shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 className="w-5 h-5" />
+          Withdrawal successful! Amount sent to bank
+        </div>
+      )}
+
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-200 dark:border-zinc-800/60">
+        <div className="max-w-lg mx-auto flex items-center justify-around py-2 px-4">
+          <button onClick={() => setDashboardView('dashboard')} className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${dashboardView === 'dashboard' ? 'text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
+            <BarChart3 className="w-5 h-5" />
+            <span className="text-xs font-medium">Home</span>
+          </button>
+          <button onClick={() => setDashboardView('history')} className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${dashboardView === 'history' ? 'text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
+            <History className="w-5 h-5" />
+            <span className="text-xs">History</span>
+          </button>
+          <button onClick={() => setDashboardView('wallet')} className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${dashboardView === 'wallet' ? 'text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
+            <Wallet className="w-5 h-5" />
+            <span className="text-xs">Wallet</span>
+          </button>
+          <button onClick={() => setScreen('profile')} className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+            <User className="w-5 h-5" />
+            <span className="text-xs">Profile</span>
+          </button>
+        </div>
+      </nav>
+    </div>
+  );
+}
