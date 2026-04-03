@@ -334,12 +334,26 @@ export default function ProfileScreen() {
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800/60">
-        <div className="max-w-lg mx-auto flex items-center justify-around py-2 px-4">
-          <button onClick={() => { setDashboardView('dashboard'); setScreen('dashboard'); }} className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-zinc-500 hover:text-zinc-300 transition-colors"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg><span className="text-xs">Home</span></button>
-          <button onClick={() => { setDashboardView('history'); setScreen('dashboard'); }} className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-zinc-500 hover:text-zinc-300 transition-colors"><History className="w-5 h-5" /><span className="text-xs">History</span></button>
-          <button onClick={() => { setDashboardView('wallet'); setScreen('dashboard'); }} className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-zinc-500 hover:text-zinc-300 transition-colors"><Wallet className="w-5 h-5" /><span className="text-xs">Wallet</span></button>
-          <button className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-amber-500"><User className="w-5 h-5" /><span className="text-xs font-medium">Profile</span></button>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+        <div className="max-w-sm mx-auto px-4 pb-2 pointer-events-auto">
+          <div className="flex items-center justify-between rounded-2xl bg-white/90 dark:bg-zinc-800/90 backdrop-blur-xl border border-zinc-200/50 dark:border-zinc-700/40 px-2 py-1.5 shadow-lg shadow-black/5 dark:shadow-black/20">
+            <button onClick={() => { setDashboardView('dashboard'); setScreen('dashboard'); }} className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-all duration-200">
+              <BarChart3 className="w-5 h-5 stroke-[1.5]" />
+              <span className="text-[10px] font-medium">Home</span>
+            </button>
+            <button onClick={() => { setDashboardView('history'); setScreen('dashboard'); }} className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-all duration-200">
+              <History className="w-5 h-5 stroke-[1.5]" />
+              <span className="text-[10px] font-medium">History</span>
+            </button>
+            <button onClick={() => { setDashboardView('wallet'); setScreen('dashboard'); }} className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-all duration-200">
+              <Wallet className="w-5 h-5 stroke-[1.5]" />
+              <span className="text-[10px] font-medium">Wallet</span>
+            </button>
+            <button className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl bg-amber-500/15 text-amber-500 transition-all duration-200">
+              <User className="w-5 h-5 stroke-[2.5]" />
+              <span className="text-[10px] font-semibold">Profile</span>
+            </button>
+          </div>
         </div>
       </nav>
     </div>
