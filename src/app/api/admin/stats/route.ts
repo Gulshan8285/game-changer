@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
         (SELECT count(*) FROM InvestmentPlan WHERE isActive = 1) as activeInvestments,
         (SELECT count(*) FROM PaymentRequest WHERE status = 'pending') as pendingPayments,
         (SELECT count(*) FROM WithdrawalRequest WHERE status = 'pending') as pendingWithdrawals,
-        (SELECT count(*) FROM PaymentRequest WHERE status = 'approved') as totalPayments
+        (SELECT count(*) FROM PaymentRequest WHERE status = 'approved') as totalPayments,
+        (SELECT count(*) FROM PaymentProof WHERE status = 'pending') as pendingProofs
     `) as any[]
 
     let totalInvestedAmount = 0

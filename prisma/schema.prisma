@@ -99,3 +99,20 @@ model AdminAuth {
   username String   @unique
   password String
 }
+
+model PaymentProof {
+  id                 String   @id @default(cuid())
+  userId             String
+  userName           String
+  userEmail          String
+  userPhone          String?
+  utr                String
+  planName           String
+  amount             Int
+  screenshotFilename String
+  status             String   @default("pending")
+  adminNote          String?
+  planData           String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}

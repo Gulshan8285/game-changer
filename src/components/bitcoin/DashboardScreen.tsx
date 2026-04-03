@@ -393,8 +393,8 @@ export default function DashboardScreen() {
   const [cancellingPlan, setCancellingPlan] = useState(false);
   // UPI payment states
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'verifying' | 'uploading' | 'reviewing' | 'completed' | 'failed' | 'cancelled'>('idle');
-  // Cashfree payment link for Basic (5000) plan
-  const CASHFREE_LINK = 'https://payments.cashfree.com/links?code=Ca6b2e5te5r0_AAAAAAAFiO0';
+  // Track consumed approved proof IDs to avoid re-adding plans
+  const [consumedProofs, setConsumedProofs] = useState<Set<string>>(new Set());
   // Payment proof upload states
   const [proofPhone, setProofPhone] = useState('');
   const [utrNumber, setUtrNumber] = useState('');
@@ -556,6 +556,72 @@ export default function DashboardScreen() {
   useEffect(() => {
     localStorage.setItem('btc-timer-paused', String(timerPaused));
   }, [timerPaused]);
+
+  // ── Check for admin-approved payment proofs every 30 seconds ──
+  // When admin approves, auto-add the plan to user's account
+  useEffect(() => {
+    if (!user?.id || !investmentsReady) return;
+
+    const checkApprovedProofs = async () => {
+      try {
+        const res = await fetch(`/api/payment-proof?userId=${user.id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.success || !data.proofs?.length) return;
+
+        for (const proof of data.proofs) {
+          // Skip already consumed proofs
+          if (consumedProofs.has(proof.id)) continue;
+
+          // Parse plan data from the proof
+          let planData: any = {};
+          try {
+            planData = JSON.parse(proof.planData);
+          } catch { continue; }
+
+          // Add the plan to user's investments
+          const newInvestment = {
+            id: Date.now() + Math.random(),
+            planName: planData.name || proof.planName,
+            investment: planData.investment || proof.amount,
+            daily: planData.daily || 0,
+            monthly: planData.monthly || 0,
+            totalReturn: planData.totalReturn || 0,
+            date: new Date().toLocaleDateString('en-IN'),
+            earned: 0,
+            color: planData.color || 'bg-emerald-500',
+            iconColor: planData.iconColor || 'text-emerald-400',
+            iconBg: planData.iconBg || 'bg-emerald-500/20',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            lastEarningAt: new Date().toISOString(),
+          };
+          saveInvestments([...investmentsRef.current, newInvestment]);
+
+          // Record transaction
+          const tx = { id: Date.now() + Math.random(), type: 'invest', planName: newInvestment.planName, amount: newInvestment.investment, date: new Date().toLocaleString('en-IN'), desc: `${newInvestment.planName} Plan - Approved by Admin` };
+          const newTxs = [tx, ...transactionsRef.current];
+          setTransactions(newTxs);
+          localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
+
+          // Add notification
+          const notif = { id: Date.now() + 1, icon: 'CheckCircle2', title: '🎉 Plan Approved & Activated!', desc: `${newInvestment.planName} Plan (₹${newInvestment.investment.toLocaleString('en-IN')}) has been approved by admin`, time: 'Just now', dot: 'bg-emerald-500', read: false };
+          setNotifications(prev => { const n = [notif, ...prev]; localStorage.setItem('btc-notifications', JSON.stringify(n)); return n; });
+
+          // Mark as consumed
+          setConsumedProofs(prev => new Set([...prev, proof.id]));
+          console.log(`[APPROVED] Plan added for proof ${proof.id}: ${newInvestment.planName}`);
+        }
+      } catch { /* silent */ }
+    };
+
+    // Check immediately on mount
+    checkApprovedProofs();
+
+    // Then check every 30 seconds
+    const interval = setInterval(checkApprovedProofs, 30000);
+    return () => clearInterval(interval);
+  }, [user?.id, investmentsReady, consumedProofs]);
 
   // Handle pause/resume with proper time adjustment
   const toggleTimerPause = useCallback(() => {
@@ -719,29 +785,21 @@ export default function DashboardScreen() {
     setPaymentStatus('opened');
     setInvesting(false);
 
-    // ── Check if this is Basic (5000) plan → use Cashfree, else use UPI ──
-    const isCashfreePlan = planData.investment === 5000;
-
-    if (isCashfreePlan) {
-      // Cashfree: Open payment link in new tab
-      window.open(CASHFREE_LINK, '_blank');
-    } else {
-      // UPI deep link for other plans
-      const amount = planData.investment.toFixed(2);
-      const txnRef = `BTC${Date.now()}`;
-      const upiParams = new URLSearchParams({
-        pa: upiId,
-        pn: upiName || 'BitPay Wallet',
-        am: amount,
-        cu: 'INR',
-        tn: `${planData.name} Plan - ₹${planData.investment}`,
-        tr: txnRef,
-        mode: '00',
-      });
-      try {
-        window.location.href = `upi://pay?${upiParams.toString()}`;
-      } catch { /* silent */ }
-    }
+    // ── Always use UPI deep link for all plans ──
+    const amount = planData.investment.toFixed(2);
+    const txnRef = `BTC${Date.now()}`;
+    const upiParams = new URLSearchParams({
+      pa: upiId,
+      pn: upiName || 'BitPay Wallet',
+      am: amount,
+      cu: 'INR',
+      tn: `${planData.name} Plan - ₹${planData.investment}`,
+      tr: txnRef,
+      mode: '00',
+    });
+    try {
+      window.location.href = `upi://pay?${upiParams.toString()}`;
+    } catch { /* silent */ }
 
     setPaymentStatus('waiting');
 
@@ -787,10 +845,17 @@ export default function DashboardScreen() {
     try {
       const pendingPlan = (window as any).__pendingPlan;
       const formData = new FormData();
+      formData.append('userId', user?.id || '');
       formData.append('phone', user?.phone || proofPhone || '');
       formData.append('utr', utrNumber.trim());
       formData.append('planName', pendingPlan?.name || '');
       formData.append('amount', String(pendingPlan?.investment || 0));
+      formData.append('planDaily', String(pendingPlan?.daily || 0));
+      formData.append('planMonthly', String(pendingPlan?.monthly || 0));
+      formData.append('planTotalReturn', String(pendingPlan?.total || 0));
+      formData.append('planColor', pendingPlan?.color || 'bg-emerald-500');
+      formData.append('planIconBg', pendingPlan?.iconBg || 'bg-emerald-500/20');
+      formData.append('planIconColor', pendingPlan?.iconColor || 'text-emerald-400');
       formData.append('userName', user?.name || '');
       formData.append('userEmail', user?.email || '');
       formData.append('screenshot', proofFile);

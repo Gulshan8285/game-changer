@@ -37,6 +37,7 @@ import {
   ArrowDownLeft,
   UserCheck,
   Zap,
+  ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -92,7 +93,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'plans' | 'payments' | 'withdrawals' | 'notifications' | 'users' | 'content';
+type Tab = 'dashboard' | 'proofs' | 'plans' | 'payments' | 'withdrawals' | 'notifications' | 'users' | 'content';
 
 interface AdminStats {
   totalUsers: number;
@@ -147,6 +148,23 @@ interface WithdrawalRequest {
   user: { id: string; name: string; email: string; phone: string | null };
 }
 
+interface PaymentProofItem {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPhone: string | null;
+  utr: string;
+  planName: string;
+  amount: number;
+  screenshotFilename: string;
+  status: string;
+  adminNote: string | null;
+  planData: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface AdminNotification {
   id: string;
   title: string;
@@ -175,8 +193,9 @@ interface BtcPrice {
 const ADMIN_TOKEN = 'btc-admin-2024';
 const AUTH_KEY = 'btc-admin-auth';
 
-const NAV_ITEMS: { tab: Tab; label: string; icon: React.ReactNode }[] = [
+const NAV_ITEMS: { tab: Tab; label: string; icon: React.ReactNode; badge?: string }[] = [
   { tab: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="size-5" /> },
+  { tab: 'proofs', label: 'Payment Proofs', icon: <ShieldCheck className="size-5" /> },
   { tab: 'plans', label: 'Investment Plans', icon: <DollarSign className="size-5" /> },
   { tab: 'payments', label: 'Payments', icon: <CreditCard className="size-5" /> },
   { tab: 'withdrawals', label: 'Withdrawals', icon: <ArrowUpCircle className="size-5" /> },
@@ -696,6 +715,8 @@ export default function AdminPage() {
 
   // Data states
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [proofs, setProofs] = useState<PaymentProofItem[]>([]);
+  const [pendingProofsCount, setPendingProofsCount] = useState(0);
   const [plans, setPlans] = useState<InvestmentPlan[]>([]);
   const [payments, setPayments] = useState<PaymentRequest[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
@@ -707,6 +728,7 @@ export default function AdminPage() {
 
   // Loading states
   const [loadingStats, setLoadingStats] = useState(false);
+  const [loadingProofs, setLoadingProofs] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [loadingWithdrawals, setLoadingWithdrawals] = useState(false);
@@ -715,6 +737,7 @@ export default function AdminPage() {
   const [loadingContent, setLoadingContent] = useState(false);
 
   // Filter states
+  const [proofFilter, setProofFilter] = useState('all');
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [withdrawalFilter, setWithdrawalFilter] = useState('all');
   const [userSearch, setUserSearch] = useState('');
@@ -812,6 +835,47 @@ export default function AdminPage() {
       setLoadingStats(false);
     }
   }, [headers]);
+
+  const fetchProofs = useCallback(
+    async (status?: string) => {
+      setLoadingProofs(true);
+      try {
+        const url = status && status !== 'all' ? `/api/admin/payment-proofs?status=${status}` : '/api/admin/payment-proofs';
+        const res = await fetch(url, { headers: headers() });
+        const data = await res.json();
+        if (data.success) {
+          setProofs(data.proofs);
+          setPendingProofsCount(data.pendingCount || 0);
+        }
+      } catch {
+        /* silent */
+      } finally {
+        setLoadingProofs(false);
+      }
+    },
+    [headers],
+  );
+
+  const handleApproveRejectProof = async (id: string, action: 'approved' | 'rejected', note?: string) => {
+    try {
+      const res = await fetch(`/api/admin/payment-proofs/${id}`, {
+        method: 'PUT',
+        headers: headers(),
+        body: JSON.stringify({ status: action, adminNote: note || '' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`${action === 'approved' ? '✅ Approved! Plan will be added to user account.' : '❌ Rejected'}`, {
+          description: action === 'approved' ? 'User will see the plan activated automatically.' : 'User has been notified.',
+          duration: 4000,
+        });
+        fetchProofs(proofFilter);
+        fetchStats();
+      } else toast.error(data.error || 'Action failed');
+    } catch {
+      toast.error('Action failed');
+    }
+  };
 
   const fetchPlans = useCallback(async () => {
     setLoadingPlans(true);
@@ -914,8 +978,12 @@ export default function AdminPage() {
     switch (activeTab) {
       case 'dashboard':
         fetchStats();
+        fetchProofs('pending');
         fetchPayments('pending');
         fetchWithdrawals('pending');
+        break;
+      case 'proofs':
+        fetchProofs(proofFilter);
         break;
       case 'plans':
         fetchPlans();
@@ -936,7 +1004,11 @@ export default function AdminPage() {
         fetchContent();
         break;
     }
-  }, [authed, activeTab, fetchStats, fetchPayments, fetchWithdrawals, fetchPlans, fetchNotifications, fetchUsers, fetchContent]);
+  }, [authed, activeTab, fetchStats, fetchProofs, proofFilter, fetchPayments, fetchWithdrawals, fetchPlans, fetchNotifications, fetchUsers, fetchContent]);
+
+  useEffect(() => {
+    if (authed && activeTab === 'proofs') fetchProofs(proofFilter);
+  }, [authed, activeTab, proofFilter, fetchProofs]);
 
   useEffect(() => {
     if (authed && activeTab === 'payments') fetchPayments(paymentFilter);
@@ -1308,6 +1380,11 @@ export default function AdminPage() {
             {item.tab === 'payments' && stats && stats.pendingPayments > 0 && (
               <span className="ml-auto bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">
                 {stats.pendingPayments}
+              </span>
+            )}
+            {item.tab === 'proofs' && pendingProofsCount > 0 && (
+              <span className="ml-auto bg-gradient-to-r from-emerald-500 to-green-500 text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm animate-pulse">
+                {pendingProofsCount}
               </span>
             )}
             {item.tab === 'withdrawals' && stats && stats.pendingWithdrawals > 0 && (
@@ -1740,6 +1817,194 @@ export default function AdminPage() {
     </div>
   );
 
+  // ─── PAYMENT PROOFS TAB ─────────────────────────────────────────────────
+
+  const ProofsTab = () => {
+    const [expandedProof, setExpandedProof] = useState<string | null>(null);
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            Payment Proofs
+            <ShieldCheck className="size-5 text-emerald-500" />
+          </h2>
+          <p className="text-zinc-500 text-sm mt-1">Verify user payment screenshots & approve plans</p>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2">
+          {['all', 'pending', 'approved', 'rejected'].map((f) => (
+            <Button
+              key={f}
+              variant={proofFilter === f ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setProofFilter(f)}
+              className={
+                proofFilter === f
+                  ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-md shadow-emerald-500/20 hover:from-emerald-600 hover:to-green-600 border-0'
+                  : 'bg-zinc-900 border-zinc-700/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+              }
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === 'pending' && pendingProofsCount > 0 && (
+                <span className="ml-1.5 bg-white/20 text-[10px] px-1.5 py-0.5 rounded-full">{pendingProofsCount}</span>
+              )}
+            </Button>
+          ))}
+        </div>
+
+        {loadingProofs ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="size-8 animate-spin text-zinc-500" />
+          </div>
+        ) : proofs.length === 0 ? (
+          <Card className="bg-zinc-900 border-zinc-800/60">
+            <CardContent className="p-16 text-center">
+              <ShieldCheck className="size-14 text-zinc-800 mx-auto mb-3" />
+              <p className="text-zinc-500 text-sm">No payment proofs found</p>
+              <p className="text-zinc-600 text-xs mt-1">Proofs will appear here when users submit payment screenshots</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {proofs.map((proof) => (
+              <Card key={proof.id} className="bg-zinc-900 border-zinc-800/60 overflow-hidden hover:border-zinc-700/60 transition-colors">
+                <CardContent className="p-0">
+                  {/* Header row */}
+                  <div
+                    className="flex items-center gap-4 p-4 cursor-pointer hover:bg-zinc-800/40 transition-colors"
+                    onClick={() => setExpandedProof(expandedProof === proof.id ? null : proof.id)}
+                  >
+                    {/* Avatar */}
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm">
+                      {(proof.userName || '?').charAt(0).toUpperCase()}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-white text-sm font-medium truncate">{proof.userName}</p>
+                        <StatusBadge status={proof.status} />
+                      </div>
+                      <p className="text-zinc-500 text-xs truncate">{proof.planName} • ₹{proof.amount.toLocaleString('en-IN')} • UTR: {proof.utr}</p>
+                    </div>
+
+                    {/* Date + Expand */}
+                    <div className="text-right shrink-0">
+                      <p className="text-zinc-500 text-[10px]">{formatDate(proof.createdAt)}</p>
+                      <ChevronDown className={`size-4 text-zinc-500 mx-auto mt-1 transition-transform ${expandedProof === proof.id ? 'rotate-180' : ''}`} />
+                    </div>
+                  </div>
+
+                  {/* Expanded details */}
+                  {expandedProof === proof.id && (
+                    <div className="border-t border-zinc-800/60 p-4 space-y-4 bg-zinc-800/20">
+                      {/* User Details Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="bg-zinc-800/60 rounded-lg p-3">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-wider">Name</p>
+                          <p className="text-white text-sm font-medium mt-0.5">{proof.userName}</p>
+                        </div>
+                        <div className="bg-zinc-800/60 rounded-lg p-3">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-wider">Phone</p>
+                          <p className="text-white text-sm font-medium mt-0.5">{proof.userPhone || '—'}</p>
+                        </div>
+                        <div className="bg-zinc-800/60 rounded-lg p-3">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-wider">Email</p>
+                          <p className="text-zinc-400 text-sm mt-0.5 truncate">{proof.userEmail}</p>
+                        </div>
+                        <div className="bg-zinc-800/60 rounded-lg p-3">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-wider">UTR Number</p>
+                          <p className="text-amber-400 text-sm font-mono font-medium mt-0.5">{proof.utr}</p>
+                        </div>
+                      </div>
+
+                      {/* Plan + Amount */}
+                      <div className="flex items-center gap-4">
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-2.5">
+                          <p className="text-emerald-400/70 text-[10px] uppercase tracking-wider">Plan</p>
+                          <p className="text-emerald-400 text-base font-bold">{proof.planName}</p>
+                        </div>
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-2.5">
+                          <p className="text-amber-400/70 text-[10px] uppercase tracking-wider">Amount</p>
+                          <p className="text-amber-400 text-base font-bold">₹{proof.amount.toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="bg-zinc-800/60 rounded-lg px-4 py-2.5">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-wider">Screenshot</p>
+                          <p className="text-zinc-300 text-xs font-mono mt-0.5 truncate max-w-[200px]">{proof.screenshotFilename}</p>
+                        </div>
+                      </div>
+
+                      {/* Plan data preview */}
+                      {proof.planData && (
+                        <div className="bg-zinc-800/40 rounded-lg p-3">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-wider mb-1">Plan Details (will be added on approve)</p>
+                          <div className="flex flex-wrap gap-2">
+                            {(() => {
+                              try {
+                                const pd = JSON.parse(proof.planData);
+                                return [
+                                  <Badge key="daily" variant="outline" className="text-emerald-400 border-emerald-500/30 text-xs">Daily: ₹{pd.daily}</Badge>,
+                                  <Badge key="monthly" variant="outline" className="text-amber-400 border-amber-500/30 text-xs">Monthly: ₹{pd.monthly}</Badge>,
+                                  <Badge key="total" variant="outline" className="text-purple-400 border-purple-500/30 text-xs">Total: ₹{pd.totalReturn}</Badge>,
+                                ];
+                              } catch { return null; }
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Admin note (if rejected/approved with note) */}
+                      {proof.adminNote && (
+                        <div className={`rounded-lg p-3 ${proof.status === 'rejected' ? 'bg-red-500/10 border border-red-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'}`}>
+                          <p className={`text-xs font-medium ${proof.status === 'rejected' ? 'text-red-400' : 'text-emerald-400'}`}>Admin Note: {proof.adminNote}</p>
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      {proof.status === 'pending' && (
+                        <div className="flex items-center gap-2 pt-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApproveRejectProof(proof.id, 'approved')}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white h-9"
+                          >
+                            <Check className="size-4 mr-1.5" />
+                            Approve Plan
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleApproveRejectProof(proof.id, 'rejected')}
+                            className="bg-red-600 hover:bg-red-700 text-white h-9"
+                          >
+                            <Ban className="size-4 mr-1.5" />
+                            Reject
+                          </Button>
+                          <a
+                            href={`https://wa.me/${proof.userPhone ? '91' + proof.userPhone : ''}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto"
+                          >
+                            <Button size="sm" variant="outline" className="bg-green-600/10 border-green-500/30 text-green-400 hover:bg-green-600/20 h-9">
+                              <Send className="size-3.5 mr-1.5" />
+                              WhatsApp User
+                            </Button>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ─── PAYMENTS TAB ─────────────────────────────────────────────────────────
 
   const PaymentsTab = () => {
@@ -2079,6 +2344,7 @@ export default function AdminPage() {
   const renderTab = () => {
     switch (activeTab) {
       case 'dashboard': return <DashboardTab />;
+      case 'proofs': return <ProofsTab />;
       case 'plans': return <PlansTab />;
       case 'payments': return <PaymentsTab />;
       case 'withdrawals': return <WithdrawalsTab />;

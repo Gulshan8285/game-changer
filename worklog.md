@@ -435,3 +435,49 @@ Stage Summary:
 - Mobile users get Web Share dialog (can attach screenshot directly to WhatsApp)
 - Desktop users get wa.me link with pre-filled text
 - Payment proof API saves files with UTR in filename for easy identification
+---
+Task ID: 2
+Agent: general-purpose
+Task: Add PaymentProof model to Prisma schema
+
+Work Log:
+- Read existing schema.prisma
+- Added PaymentProof model with userId, userName, userEmail, userPhone, utr, planName, amount, screenshotFilename, status, adminNote, planData fields
+- Pushed schema to database with db:push
+- Generated Prisma client
+
+Stage Summary:
+- PaymentProof table created in SQLite database
+- Model supports pending/approved/rejected statuses
+- planData field stores JSON for plan recreation on approval
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Remove Cashfree payment link, add admin approval system for payment proofs
+
+Work Log:
+- Removed Cashfree payment link — all plans now use UPI deep link
+- Removed CASHFREE_LINK constant and isCashfreePlan check
+- Added PaymentProof model to Prisma schema (via subagent Task ID 2)
+- Updated /api/payment-proof POST to save proof to database with full plan data JSON
+- Added /api/payment-proof GET endpoint for users to check approved proofs
+- Created /api/admin/payment-proofs GET endpoint to list all proofs with status filter
+- Created /api/admin/payment-proofs/[id] PUT endpoint for approve/reject
+- Updated admin stats API to include pendingProofs count
+- Added "Payment Proofs" tab to admin panel with:
+  - Filter buttons (all/pending/approved/rejected)
+  - Expandable cards showing user name, phone, email, UTR, plan, amount, screenshot filename
+  - Plan data preview (daily/monthly/total return)
+  - Approve/Reject buttons for pending proofs
+  - WhatsApp User button for each proof
+  - Green pulse badge on sidebar for pending proofs count
+- Added auto-check in DashboardScreen (every 30s) for approved proofs
+- When admin approves: user's app detects it, auto-adds plan to investments, shows notification "🎉 Plan Approved & Activated!"
+- Consumed proof IDs tracked to avoid duplicate plan additions
+
+Stage Summary:
+- Cashfree link completely removed, UPI for all plans
+- Full admin approval flow: User submits proof → Admin sees in panel → Approve/Reject → User gets plan automatically
+- Admin sees: Name, Phone, Email, UTR, Plan, Amount, Screenshot filename, Plan details
+- User experience: Submit proof → "Reviewing" status → 30s auto-check → Plan activates with notification
