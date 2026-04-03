@@ -1814,14 +1814,29 @@ export default function DashboardScreen() {
                             </button>
                           </div>
                         ) : (
-                          <label className="flex flex-col items-center justify-center h-32 rounded-xl border-2 border-dashed border-zinc-700/50 hover:border-emerald-500/40 bg-zinc-800/30 cursor-pointer transition-colors">
-                            <div className="w-10 h-10 rounded-full bg-emerald-500/15 flex items-center justify-center mb-2">
-                              <ArrowUpRight className="w-5 h-5 text-emerald-400" />
+                          <div className="space-y-2">
+                            <div className="flex gap-3">
+                              {/* Camera Button */}
+                              <label className="flex-1 flex flex-col items-center justify-center h-28 rounded-xl border-2 border-dashed border-zinc-700/50 hover:border-emerald-500/40 bg-zinc-800/30 cursor-pointer transition-colors">
+                                <div className="w-10 h-10 rounded-full bg-emerald-500/15 flex items-center justify-center mb-2">
+                                  <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"/></svg>
+                                </div>
+                                <span className="text-xs font-medium text-zinc-400">📷 Camera</span>
+                                <span className="text-[10px] text-zinc-600">Photo click karein</span>
+                                <input type="file" accept="image/*" capture="environment" onChange={handleProofFile} className="hidden" />
+                              </label>
+                              {/* Gallery Button */}
+                              <label className="flex-1 flex flex-col items-center justify-center h-28 rounded-xl border-2 border-dashed border-zinc-700/50 hover:border-amber-500/40 bg-zinc-800/30 cursor-pointer transition-colors">
+                                <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center mb-2">
+                                  <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21zM10.5 8.25a1.125 1.125 0 11-2.25 0 1.125 1.125 0 012.25 0z"/></svg>
+                                </div>
+                                <span className="text-xs font-medium text-zinc-400">🖼️ Gallery</span>
+                                <span className="text-[10px] text-zinc-600">Photo select karein</span>
+                                <input type="file" accept="image/*" onChange={handleProofFile} className="hidden" />
+                              </label>
                             </div>
-                            <span className="text-xs font-medium text-zinc-400">Tap to upload screenshot</span>
-                            <span className="text-[10px] text-zinc-600 mt-0.5">JPG, PNG — Max 5MB</span>
-                            <input type="file" accept="image/*" capture="environment" onChange={handleProofFile} className="hidden" />
-                          </label>
+                            <span className="text-[10px] text-zinc-600 text-center block">JPG, PNG — Max 5MB</span>
+                          </div>
                         )}
                       </div>
 
