@@ -392,9 +392,14 @@ export default function DashboardScreen() {
   const [cancelPlanId, setCancelPlanId] = useState<number | null>(null);
   const [cancellingPlan, setCancellingPlan] = useState(false);
   // UPI payment states
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'verifying' | 'completed' | 'failed' | 'cancelled'>('idle');
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'verifying' | 'uploading' | 'reviewing' | 'completed' | 'failed' | 'cancelled'>('idle');
   // Cashfree payment link for Basic (5000) plan
   const CASHFREE_LINK = 'https://payments.cashfree.com/links?code=Ca6b2e5te5r0_AAAAAAAFiO0';
+  // Payment proof upload states
+  const [proofPhone, setProofPhone] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
   const [upiId, setUpiId] = useState('gulshanyadav62000-6@okicici');
   const [upiName, setUpiName] = useState('Gulshan Yadav');
   // showWallet/showHistory removed — now using store's dashboardView
@@ -769,18 +774,46 @@ export default function DashboardScreen() {
     (window as any).__upiCleanup = cleanup;
   };
 
-  // ── Confirm payment success (user clicks "Yes, I Paid") ──
+  // ── Confirm payment → show upload form (don't auto-complete) ──
   const confirmPaymentSuccess = () => {
-    const pendingPlan = (window as any).__pendingPlan;
-    if (pendingPlan) {
-      completeInvestment(pendingPlan);
-      delete (window as any).__pendingPlan;
+    setPaymentStatus('uploading');
+  };
+
+  // ── Submit payment proof (phone + screenshot) ──
+  const submitPaymentProof = async () => {
+    if (!proofFile || proofPhone.length !== 10) return;
+    setUploadingProof(true);
+    try {
+      const formData = new FormData();
+      formData.append('phone', proofPhone);
+      formData.append('planName', (window as any).__pendingPlan?.name || '');
+      formData.append('amount', String((window as any).__pendingPlan?.investment || 0));
+      formData.append('userName', user?.name || '');
+      formData.append('userEmail', user?.email || '');
+      formData.append('screenshot', proofFile);
+
+      const res = await fetch('/api/payment-proof', { method: 'POST', body: formData });
+      if (res.ok) {
+        setPaymentStatus('reviewing');
+        setProofPhone('');
+        setProofFile(null);
+        setProofPreview(null);
+      }
+    } catch {
+      alert('Upload failed. Please try again.');
     }
-    setPaymentStatus('completed');
-    setSelectedPlan(null);
-    setShowInvestPlans(false);
-    setInvestSuccess(true);
-    setTimeout(() => setInvestSuccess(false), 3000);
+    setUploadingProof(false);
+  };
+
+  // ── Handle screenshot file selection ──
+  const handleProofFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert('Image must be under 5MB'); return; }
+    setProofFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setProofPreview(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
   // ── Decline payment (user clicks "No, Payment Failed") ──
@@ -1642,6 +1675,109 @@ export default function DashboardScreen() {
                           No, Payment Failed
                         </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* STEP 4: Upload payment proof (phone + screenshot) */}
+                  {paymentStatus === 'uploading' && (
+                    <div className="py-2">
+                      <div className="text-center mb-4">
+                        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-500/20 mb-3">
+                          <Shield className="w-7 h-7 text-emerald-400" />
+                        </div>
+                        <h3 className="text-lg font-bold text-white">Upload Payment Proof</h3>
+                        <p className="text-xs text-zinc-400 mt-1">Enter your number & upload screenshot</p>
+                      </div>
+
+                      {/* Phone Number */}
+                      <div className="mb-3">
+                        <label className="text-xs font-semibold text-zinc-400 mb-1.5 block">Phone Number</label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-zinc-500 font-medium">+91</span>
+                          <input
+                            type="tel"
+                            maxLength={10}
+                            value={proofPhone}
+                            onChange={(e) => setProofPhone(e.target.value.replace(/\D/g, ''))}
+                            placeholder="Enter 10-digit number"
+                            className="flex-1 bg-zinc-800 border border-zinc-700/50 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                          />
+                        </div>
+                        {proofPhone.length > 0 && proofPhone.length !== 10 && (
+                          <p className="text-[10px] text-red-400 mt-1">Must be exactly 10 digits</p>
+                        )}
+                      </div>
+
+                      {/* Screenshot Upload */}
+                      <div className="mb-4">
+                        <label className="text-xs font-semibold text-zinc-400 mb-1.5 block">Payment Screenshot</label>
+                        {proofPreview ? (
+                          <div className="relative rounded-xl overflow-hidden border border-zinc-700/50">
+                            <img src={proofPreview} alt="Proof" className="w-full h-40 object-cover" />
+                            <button
+                              onClick={() => { setProofFile(null); setProofPreview(null); }}
+                              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-red-500 transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex flex-col items-center justify-center h-32 rounded-xl border-2 border-dashed border-zinc-700/50 hover:border-emerald-500/40 bg-zinc-800/30 cursor-pointer transition-colors">
+                            <div className="w-10 h-10 rounded-full bg-emerald-500/15 flex items-center justify-center mb-2">
+                              <ArrowUpRight className="w-5 h-5 text-emerald-400" />
+                            </div>
+                            <span className="text-xs font-medium text-zinc-400">Tap to upload screenshot</span>
+                            <span className="text-[10px] text-zinc-600 mt-0.5">JPG, PNG — Max 5MB</span>
+                            <input type="file" accept="image/*" capture="environment" onChange={handleProofFile} className="hidden" />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* Submit + Cancel */}
+                      <div className="space-y-2.5">
+                        <button
+                          onClick={submitPaymentProof}
+                          disabled={!proofFile || proofPhone.length !== 10 || uploadingProof}
+                          className={`w-full py-3.5 rounded-xl font-semibold transition-all active:scale-[0.98] ${
+                            proofFile && proofPhone.length === 10
+                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                              : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {uploadingProof ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              Uploading...
+                            </div>
+                          ) : (
+                            'Submit for Verification'
+                          )}
+                        </button>
+                        <button onClick={confirmPaymentFailed} className="w-full py-2.5 rounded-xl text-zinc-500 hover:text-red-400 text-xs font-medium transition-colors">
+                          Payment Failed
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 5: Under review — admin will verify */}
+                  {paymentStatus === 'reviewing' && (
+                    <div className="text-center py-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/20 mb-4">
+                        <Clock className="w-8 h-8 text-amber-400 animate-pulse" />
+                      </div>
+                      <h3 className="text-lg font-bold text-amber-400">Verification in Progress</h3>
+                      <p className="text-sm text-zinc-400 mt-2 mb-1">Your payment proof has been submitted</p>
+                      <p className="text-xs text-zinc-500">Admin will verify within 24 hours</p>
+                      <div className="mt-4 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                        <p className="text-[11px] text-amber-400 font-medium">⏳ Plan will be activated after verification</p>
+                      </div>
+                      <button
+                        onClick={() => { setPaymentStatus('idle'); setSelectedPlan(null); }}
+                        className="mt-4 w-full py-2.5 rounded-xl bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors text-sm font-medium"
+                      >
+                        OK, Got it
+                      </button>
                     </div>
                   )}
 
