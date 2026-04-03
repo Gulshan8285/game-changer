@@ -460,6 +460,36 @@ export default function DashboardScreen() {
     setInvestmentsReady(true);
   }, []);
 
+  // ── Fetch admin notifications from API + poll every 30s ──
+  useEffect(() => {
+    const fetchApiNotifications = async () => {
+      try {
+        const res = await fetch('/api/notifications');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.notifications?.length) {
+            const savedNotifs = localStorage.getItem('btc-notifications');
+            const localNotifs: any[] = savedNotifs ? JSON.parse(savedNotifs) : [];
+            const existingIds = new Set(localNotifs.map((n: any) => n.id));
+            let newCount = 0;
+            const merged = [...data.notifications.filter((n: any) => {
+              if (existingIds.has(n.id)) return false;
+              newCount++;
+              return true;
+            }), ...localNotifs].slice(0, 50);
+            if (newCount > 0) {
+              setNotifications(merged);
+              localStorage.setItem('btc-notifications', JSON.stringify(merged));
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    fetchApiNotifications();
+    const notifInterval = setInterval(fetchApiNotifications, 30000);
+    return () => clearInterval(notifInterval);
+  }, []);
+
   // ── 24-hour auto-earning system with countdown timer ──
   // Step 1: On mount + when investments change, credit missed earnings & set initial countdowns
   useEffect(() => {

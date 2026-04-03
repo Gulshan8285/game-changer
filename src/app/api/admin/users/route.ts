@@ -33,16 +33,21 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
     }
 
-    // Delete user's payment proofs first
-    await rawQuery(`DELETE FROM PaymentProof WHERE userId = '${userId}'`)
+    const safeId = userId.replace(/'/g, "''")
+
+    // Delete all user-related data in correct order (FK constraints)
+    await rawQuery(`DELETE FROM PaymentProof WHERE userId = '${safeId}'`)
+    await rawQuery(`DELETE FROM PaymentRequest WHERE userId = '${safeId}'`)
+    await rawQuery(`DELETE FROM WithdrawalRequest WHERE userId = '${safeId}'`)
 
     // Delete the user
-    await rawQuery(`DELETE FROM User WHERE id = '${userId}'`)
+    const result = await rawQuery(`DELETE FROM User WHERE id = '${safeId}'`)
 
     return NextResponse.json({ success: true, message: 'User deleted successfully' })
-  } catch (error) {
+  } catch (error: any) {
+    console.error('Delete user error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to delete user' },
+      { success: false, error: 'Failed to delete user: ' + (error?.message || 'Unknown error') },
       { status: 500 }
     )
   }
