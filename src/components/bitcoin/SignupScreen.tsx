@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,12 +14,9 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
-  const [googleError, setGoogleError] = useState('');
-  const [showGoogleHelp, setShowGoogleHelp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showGoogleHelp, setShowGoogleHelp] = useState(false);
   const [siteContent, setSiteContent] = useState<Record<string, string>>({});
-  const popupRef = useRef<Window | null>(null);
-  const popupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
 
   // Fetch site content from API
@@ -38,6 +35,66 @@ export default function SignupScreen() {
     fetchContent();
   }, []);
 
+  // Handle Google OAuth callback redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleData = params.get('google_data');
+    const googleError = params.get('google_error');
+    const googleErrorDesc = params.get('google_error_desc');
+
+    if (googleData || googleError) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    if (googleError) {
+      if (googleError === 'redirect_uri_mismatch' || (googleErrorDesc && googleErrorDesc.includes('redirect_uri_mismatch'))) {
+        setError('Domain not authorized in Google Cloud Console. Click ℹ for help.');
+        setShowGoogleHelp(true);
+      } else {
+        setError(`Google sign-up failed (${googleError}). Please try again or use email signup.`);
+      }
+      return;
+    }
+
+    if (!googleData) return;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(decodeURIComponent(googleData));
+    } catch {
+      setError('Google login data corrupted. Please try again.');
+      return;
+    }
+
+    const completeGoogleLogin = async () => {
+      setLoading(true);
+      setAppLoading(true);
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || 'Google sign-up failed');
+        } else {
+          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signup', userId: data.user?.id, userName: parsed.name, userEmail: parsed.email, method: 'google' }) }).catch(() => {});
+          const userData = { termsAccepted: false, isGoogleAuth: false, ...data.user };
+          setUser(userData);
+          setNeedsTermsAcceptance(!!data.needsTermsAcceptance);
+          setScreen(data.needsTermsAcceptance ? 'terms' : 'dashboard');
+        }
+      } catch {
+        setError('Google sign-up failed. Please try again.');
+      } finally {
+        setLoading(false);
+        setAppLoading(false);
+      }
+    };
+    completeGoogleLogin();
+  }, [setUser, setNeedsTermsAcceptance, setScreen, setAppLoading]);
+
   const updateField = (field: string, value: string) => { setForm((prev) => ({ ...prev, [field]: value })); setError(''); };
 
   const passwordStrength = (() => {
@@ -54,19 +111,8 @@ export default function SignupScreen() {
   const strengthLabel = ['Weak', 'Fair', 'Good', 'Strong', 'Very Strong'][passwordStrength] || '';
   const strengthColor = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-emerald-500', 'bg-emerald-400'][passwordStrength] || '';
 
-  const processAuthResponse = useCallback((data: any) => {
-    const userData = {
-      termsAccepted: false,
-      isGoogleAuth: false,
-      ...data.user,
-    };
-    setUser(userData);
-    setNeedsTermsAcceptance(!!data.needsTermsAcceptance);
-    setScreen(data.needsTermsAcceptance ? 'terms' : 'dashboard');
-  }, [setUser, setNeedsTermsAcceptance, setScreen]);
-
   const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setGoogleError('');
+    e.preventDefault(); setError('');
     if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
     if (form.password.length < 8) { setError('Password must be at least 8 characters'); return; }
     if (form.phone && !/^[0-9]{10}$/.test(form.phone.replace(/\s+/g, ''))) { setError('Phone number must be exactly 10 digits'); return; }
@@ -77,7 +123,10 @@ export default function SignupScreen() {
       if (!res.ok) { setError(data.error || 'Signup failed'); }
       else {
         fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signup', userId: data.user?.id, userName: form.name, userEmail: form.email, userPhone: form.phone, method: 'email' }) }).catch(() => {});
-        processAuthResponse({ ...data, needsTermsAcceptance: true });
+        const userData = { termsAccepted: false, isGoogleAuth: false, ...data.user };
+        setUser(userData);
+        setNeedsTermsAcceptance(true);
+        setScreen('terms');
       }
     } catch { setError('Something went wrong. Please try again.'); }
     finally { setLoading(false); setAppLoading(false); }
@@ -86,122 +135,14 @@ export default function SignupScreen() {
   const handleGoogleSignup = () => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
-      setGoogleError('Google Client ID not configured. Please use email signup.');
+      setError('Google login not configured. Use email signup.');
       return;
     }
-
-    setGoogleError('');
-    setError('');
-    setLoading(true);
-    setAppLoading(true);
-
     const redirectUri = `${window.location.origin}/api/auth/google-callback`;
     const scope = 'openid profile email';
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account&access_type=online`;
-
-    const popup = window.open(authUrl, 'google-auth', 'width=550,height=650,left=200,top=100,scrollbars=yes');
-    popupRef.current = popup;
-
-    if (!popup || popup.closed) {
-      setLoading(false);
-      setAppLoading(false);
-      setGoogleError('Popup blocked. Please allow popups for this site.');
-      return;
-    }
-
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'google-oauth') return;
-
-      window.removeEventListener('message', handleMessage);
-      cleanup();
-
-      if (event.data.error) {
-        setLoading(false);
-        setAppLoading(false);
-        const errDesc = event.data.error_description || event.data.error;
-        if (errDesc.includes('redirect_uri_mismatch') || errDesc.includes('redirect')) {
-          setGoogleError('Domain not authorized in Google Cloud Console. Add your domain to "Authorized JavaScript origins".');
-          setShowGoogleHelp(true);
-        } else {
-          setGoogleError(`Google sign-up failed: ${errDesc}`);
-        }
-        return;
-      }
-
-      const accessToken = event.data.access_token;
-      if (!accessToken) {
-        setLoading(false);
-        setAppLoading(false);
-        setGoogleError('No access token received from Google.');
-        return;
-      }
-
-      try {
-        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!userInfoRes.ok) {
-          setLoading(false);
-          setAppLoading(false);
-          setGoogleError('Failed to get Google user info.');
-          return;
-        }
-        const googleUser = await userInfoRes.json();
-
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: googleUser.name, email: googleUser.email, avatar: googleUser.picture, isGoogleAuth: true }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setGoogleError(data.error || 'Google signup failed');
-        } else {
-          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signup', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
-          processAuthResponse(data);
-        }
-      } catch {
-        setGoogleError('Google signup failed. Please try again.');
-      } finally {
-        setLoading(false);
-        setAppLoading(false);
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    const checkClosed = setInterval(() => {
-      if (!popupRef.current || popupRef.current.closed) {
-        cleanup();
-        setLoading(false);
-        setAppLoading(false);
-      }
-    }, 1000);
-    popupTimerRef.current = checkClosed;
-
-    const cleanup = () => {
-      window.removeEventListener('message', handleMessage);
-      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
-      popupTimerRef.current = null;
-      if (popupRef.current && !popupRef.current.closed) {
-        try { popupRef.current.close(); } catch {}
-      }
-      popupRef.current = null;
-    };
-
-    setTimeout(() => {
-      cleanup();
-      setLoading(false);
-      setAppLoading(false);
-    }, 180000);
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`;
+    window.location.href = authUrl;
   };
-
-  useEffect(() => {
-    return () => {
-      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
-    };
-  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
@@ -227,21 +168,8 @@ export default function SignupScreen() {
               {error && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-              {googleError && (
-                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <div className="flex-1">
-                    <span>{googleError}</span>
-                    <button type="button" onClick={() => setShowGoogleHelp(true)} className="ml-1 underline text-amber-300 hover:text-amber-200 text-xs">
-                      How to fix?
-                    </button>
-                  </div>
-                  <button type="button" onClick={() => setGoogleError('')} className="shrink-0 hover:text-amber-300">
-                    <X className="w-3 h-3" />
-                  </button>
+                  <div className="flex-1"><span>{error}</span></div>
+                  <button type="button" onClick={() => setError('')} className="shrink-0 hover:text-red-300"><X className="w-3 h-3" /></button>
                 </div>
               )}
               <div className="space-y-2">
@@ -315,6 +243,9 @@ export default function SignupScreen() {
                   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" /><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
                   Sign up with Google
                 </Button>
+                <button type="button" onClick={() => setShowGoogleHelp(true)} className="absolute -top-1 -right-1 text-zinc-600 hover:text-zinc-400 transition-colors" title="Google sign-in help">
+                  <Info className="w-3.5 h-3.5" />
+                </button>
               </div>
             </form>
             <div className="mt-6 text-center">
@@ -330,30 +261,26 @@ export default function SignupScreen() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Info className="w-5 h-5 text-amber-500" />
-                  Google Sign-in Help
+                  Google Sign-in Setup
                 </h3>
-                <button onClick={() => setShowGoogleHelp(false)} className="text-zinc-500 hover:text-zinc-300">
-                  <X className="w-5 h-5" />
-                </button>
+                <button onClick={() => setShowGoogleHelp(false)} className="text-zinc-500 hover:text-zinc-300"><X className="w-5 h-5" /></button>
               </div>
               <div className="space-y-3 text-sm text-zinc-300">
-                <p>If Google sign-up shows <span className="text-amber-400 font-medium">&quot;redirect_uri_mismatch&quot;</span> error:</p>
+                <p className="font-medium text-amber-400">Step-by-step fix:</p>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
                   <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline hover:text-amber-300">Google Cloud Console</a></li>
                   <li>Select your project</li>
                   <li>Go to <span className="text-amber-400">APIs & Services → Credentials</span></li>
-                  <li>Click <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
-                  <li>In <span className="text-amber-400">&quot;Authorized JavaScript origins&quot;</span>, add:</li>
+                  <li>Click your <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
+                  <li>In <span className="text-amber-400">&quot;Authorized redirect URIs&quot;</span> add:</li>
                 </ol>
                 <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
                   <p className="text-xs text-zinc-400 font-medium mb-1">Add this URL:</p>
-                  <p className="text-xs text-amber-400 break-all font-mono select-all">{typeof window !== 'undefined' ? window.location.origin : 'your-website-domain'}</p>
+                  <p className="text-xs text-amber-400 break-all font-mono select-all">{typeof window !== 'undefined' ? `${window.location.origin}/api/auth/google-callback` : 'your-domain/api/auth/google-callback'}</p>
                 </div>
-                <p className="text-zinc-500 text-xs">💡 You can also use <span className="text-zinc-400">Email/Phone signup</span> anytime.</p>
+                <p className="text-zinc-500 text-xs">💡 Email/Phone signup always works as backup.</p>
               </div>
-              <Button onClick={() => setShowGoogleHelp(false)} className="w-full mt-5 bg-zinc-800 hover:bg-zinc-700 text-white">
-                Got it
-              </Button>
+              <Button onClick={() => setShowGoogleHelp(false)} className="w-full mt-5 bg-zinc-800 hover:bg-zinc-700 text-white">Got it</Button>
             </div>
           </div>
         )}

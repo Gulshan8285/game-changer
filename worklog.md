@@ -534,3 +534,33 @@ Stage Summary:
 - Created /api/auth/google-callback route as the redirect target
 - Help dialog shows clickable Google Cloud Console link + current domain to add
 - IMPORTANT: User must add their website domain to Google Cloud Console "Authorized JavaScript origins" for this Client ID
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix Google OAuth with Client Secret - server-side Authorization Code flow
+
+Work Log:
+- Added GOOGLE_CLIENT_SECRET to .env
+- Rewrote /api/auth/google-callback/route.ts to use Authorization Code flow:
+  - Server receives code from Google redirect
+  - Server exchanges code for access_token using Client ID + Client Secret
+  - Server fetches user info from Google API
+  - Server redirects to / with user data in URL params (google_data)
+  - Handles errors gracefully (redirect_uri_mismatch, token_exchange_failed, etc.)
+- Rewrote LoginScreen.tsx:
+  - Removed all popup/postMessage code
+  - Google login now does full page redirect to Google auth URL
+  - On return, useEffect reads google_data from URL params
+  - Auto-completes login by calling /api/auth/google backend
+  - Cleans URL params after processing
+  - Help dialog shows correct redirect URI to add
+- Rewrote SignupScreen.tsx with same redirect-based Google OAuth
+- All lint passes, dev server running with 0 errors
+
+Stage Summary:
+- Google Client ID: 743589348670-ckqcsk5p8c1int5hcekb1s57pr0mkc4r.apps.googleusercontent.com
+- Google Client Secret: added to .env
+- OAuth flow: Authorization Code (server-side, uses Client Secret)
+- User must add redirect URI in Google Cloud Console "Authorized redirect URIs"
+- The redirect URI format: {domain}/api/auth/google-callback
+- @react-oauth/google library no longer used (removed from Providers.tsx)

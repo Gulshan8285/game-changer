@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,12 +14,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [googleError, setGoogleError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showGoogleHelp, setShowGoogleHelp] = useState(false);
   const [siteContent, setSiteContent] = useState<Record<string, string>>({});
-  const popupRef = useRef<Window | null>(null);
-  const popupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
 
   // Fetch site content from API
@@ -38,23 +35,73 @@ export default function LoginScreen() {
     fetchContent();
   }, []);
 
-  const processAuthResponse = useCallback((data: any) => {
-    const userData = {
-      termsAccepted: false,
-      isGoogleAuth: false,
-      ...data.user,
+  // Handle Google OAuth callback redirect — check URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleData = params.get('google_data');
+    const googleError = params.get('google_error');
+    const googleErrorDesc = params.get('google_error_desc');
+
+    // Clean URL — remove params so they don't stay on page refresh
+    if (googleData || googleError) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    if (googleError) {
+      if (googleError === 'redirect_uri_mismatch' || (googleErrorDesc && googleErrorDesc.includes('redirect_uri_mismatch'))) {
+        setError('Domain not authorized in Google Cloud Console. Click the ℹ button on Google login for help.');
+        setShowGoogleHelp(true);
+      } else {
+        setError(`Google login failed (${googleError}). Please try again or use email/phone login.`);
+      }
+      return;
+    }
+
+    if (!googleData) return;
+
+    // Process Google login data from callback
+    let parsed;
+    try {
+      parsed = JSON.parse(decodeURIComponent(googleData));
+    } catch {
+      setError('Google login data corrupted. Please try again.');
+      return;
+    }
+
+    const completeGoogleLogin = async () => {
+      setLoading(true);
+      setAppLoading(true);
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || 'Google login failed');
+        } else {
+          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', userId: data.user?.id, userName: parsed.name, userEmail: parsed.email, method: 'google' }) }).catch(() => {});
+          const userData = { termsAccepted: false, isGoogleAuth: false, ...data.user };
+          setUser(userData);
+          setNeedsTermsAcceptance(!!data.needsTermsAcceptance);
+          setScreen(data.needsTermsAcceptance ? 'terms' : 'dashboard');
+        }
+      } catch {
+        setError('Google login failed. Please try again.');
+      } finally {
+        setLoading(false);
+        setAppLoading(false);
+      }
     };
-    setUser(userData);
-    setNeedsTermsAcceptance(!!data.needsTermsAcceptance);
-    setScreen(data.needsTermsAcceptance ? 'terms' : 'dashboard');
-  }, [setUser, setNeedsTermsAcceptance, setScreen]);
+    completeGoogleLogin();
+  }, [setUser, setNeedsTermsAcceptance, setScreen, setAppLoading]);
 
   const isPhoneLogin = /^[0-9]+$/.test(email.trim());
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setGoogleError('');
 
     if (isPhoneLogin && email.trim().length !== 10) {
       setError('Phone number must be exactly 10 digits');
@@ -73,7 +120,10 @@ export default function LoginScreen() {
       if (!res.ok) { setError(data.error || 'Login failed'); }
       else {
         fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', userId: data.user?.id, userName: data.user?.name, userEmail: email.trim(), method: 'email' }) }).catch(() => {});
-        processAuthResponse(data);
+        const userData = { termsAccepted: false, isGoogleAuth: false, ...data.user };
+        setUser(userData);
+        setNeedsTermsAcceptance(!!data.needsTermsAcceptance);
+        setScreen(data.needsTermsAcceptance ? 'terms' : 'dashboard');
       }
     } catch { setError('Something went wrong. Please try again.'); }
     finally { setLoading(false); setAppLoading(false); }
@@ -82,136 +132,24 @@ export default function LoginScreen() {
   const handleGoogleLogin = () => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
-      setGoogleError('Google Client ID not configured. Please use email/phone login.');
+      setError('Google login not configured. Use email/phone login.');
       return;
     }
-
-    setGoogleError('');
-    setError('');
-    setLoading(true);
-    setAppLoading(true);
 
     const redirectUri = `${window.location.origin}/api/auth/google-callback`;
     const scope = 'openid profile email';
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account&access_type=online`;
-
-    // Open Google auth in popup
-    const popup = window.open(authUrl, 'google-auth', 'width=550,height=650,left=200,top=100,scrollbars=yes');
-    popupRef.current = popup;
-
-    if (!popup || popup.closed) {
-      setLoading(false);
-      setAppLoading(false);
-      setGoogleError('Popup blocked. Please allow popups for this site.');
-      return;
-    }
-
-    // Listen for postMessage from callback page
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'google-oauth') return;
-
-      // Clean up listener
-      window.removeEventListener('message', handleMessage);
-      cleanup();
-
-      if (event.data.error) {
-        setLoading(false);
-        setAppLoading(false);
-        const errDesc = event.data.error_description || event.data.error;
-        if (errDesc.includes('redirect_uri_mismatch') || errDesc.includes('redirect')) {
-          setGoogleError('Domain not authorized in Google Cloud Console. Add your domain to "Authorized JavaScript origins".');
-          setShowGoogleHelp(true);
-        } else {
-          setGoogleError(`Google sign-in failed: ${errDesc}`);
-        }
-        return;
-      }
-
-      const accessToken = event.data.access_token;
-      if (!accessToken) {
-        setLoading(false);
-        setAppLoading(false);
-        setGoogleError('No access token received from Google.');
-        return;
-      }
-
-      // Got token — get user info from Google
-      try {
-        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!userInfoRes.ok) {
-          setLoading(false);
-          setAppLoading(false);
-          setGoogleError('Failed to get Google user info.');
-          return;
-        }
-        const googleUser = await userInfoRes.json();
-
-        // Call our backend API to login/signup
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: googleUser.name,
-            email: googleUser.email,
-            avatar: googleUser.picture,
-            isGoogleAuth: true,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setGoogleError(data.error || 'Google login failed');
-        } else {
-          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
-          processAuthResponse(data);
-        }
-      } catch {
-        setGoogleError('Google login failed. Please try again.');
-      } finally {
-        setLoading(false);
-        setAppLoading(false);
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    // Monitor popup — if user closes it manually, clean up
-    const checkClosed = setInterval(() => {
-      if (!popupRef.current || popupRef.current.closed) {
-        cleanup();
-        setLoading(false);
-        setAppLoading(false);
-      }
-    }, 1000);
-    popupTimerRef.current = checkClosed;
-
-    const cleanup = () => {
-      window.removeEventListener('message', handleMessage);
-      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
-      popupTimerRef.current = null;
-      if (popupRef.current && !popupRef.current.closed) {
-        try { popupRef.current.close(); } catch {}
-      }
-      popupRef.current = null;
-    };
-
-    // Auto-cleanup after 3 minutes
-    setTimeout(() => {
-      cleanup();
-      setLoading(false);
-      setAppLoading(false);
-    }, 180000);
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`;
+    window.location.href = authUrl;
   };
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
-      window.removeEventListener('message', () => {});
-    };
-  }, []);
+  const errorMessages: Record<string, string> = {
+    redirect_uri_mismatch: 'Domain not authorized. Add your domain to Google Cloud Console "Authorized redirect URIs".',
+    missing_config: 'Google Client ID or Secret not configured.',
+    token_exchange_failed: 'Token exchange with Google failed.',
+    no_access_token: 'No access token received.',
+    userinfo_failed: 'Failed to get user info from Google.',
+    server_error: 'Server error during Google login.',
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
@@ -240,19 +178,10 @@ export default function LoginScreen() {
               {error && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-              {googleError && (
-                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                   <div className="flex-1">
-                    <span>{googleError}</span>
-                    <button type="button" onClick={() => setShowGoogleHelp(true)} className="ml-1 underline text-amber-300 hover:text-amber-200 text-xs">
-                      How to fix?
-                    </button>
+                    <span>{error}</span>
                   </div>
-                  <button type="button" onClick={() => setGoogleError('')} className="shrink-0 hover:text-amber-300">
+                  <button type="button" onClick={() => setError('')} className="shrink-0 hover:text-red-300">
                     <X className="w-3 h-3" />
                   </button>
                 </div>
@@ -314,6 +243,9 @@ export default function LoginScreen() {
                   </svg>
                   Sign in with Google
                 </Button>
+                <button type="button" onClick={() => setShowGoogleHelp(true)} className="absolute -top-1 -right-1 text-zinc-600 hover:text-zinc-400 transition-colors" title="Google sign-in help">
+                  <Info className="w-3.5 h-3.5" />
+                </button>
               </div>
             </form>
             <div className="mt-6 text-center">
@@ -331,26 +263,26 @@ export default function LoginScreen() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Info className="w-5 h-5 text-amber-500" />
-                  Google Sign-in Help
+                  Google Sign-in Setup
                 </h3>
                 <button onClick={() => setShowGoogleHelp(false)} className="text-zinc-500 hover:text-zinc-300">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="space-y-3 text-sm text-zinc-300">
-                <p>If Google sign-in shows <span className="text-amber-400 font-medium">&quot;redirect_uri_mismatch&quot;</span> error:</p>
+                <p className="font-medium text-amber-400">Step-by-step fix:</p>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
                   <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline hover:text-amber-300">Google Cloud Console</a></li>
                   <li>Select your project</li>
                   <li>Go to <span className="text-amber-400">APIs & Services → Credentials</span></li>
-                  <li>Click <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
-                  <li>In <span className="text-amber-400">&quot;Authorized JavaScript origins&quot;</span>, add:</li>
+                  <li>Click your <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
+                  <li>In <span className="text-amber-400">&quot;Authorized redirect URIs&quot;</span> add:</li>
                 </ol>
                 <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
                   <p className="text-xs text-zinc-400 font-medium mb-1">Add this URL:</p>
-                  <p className="text-xs text-amber-400 break-all font-mono select-all">{typeof window !== 'undefined' ? window.location.origin : 'your-website-domain'}</p>
+                  <p className="text-xs text-amber-400 break-all font-mono select-all">{typeof window !== 'undefined' ? `${window.location.origin}/api/auth/google-callback` : 'your-domain/api/auth/google-callback'}</p>
                 </div>
-                <p className="text-zinc-500 text-xs">💡 You can also use <span className="text-zinc-400">Email/Phone login</span> anytime.</p>
+                <p className="text-zinc-500 text-xs">💡 Email/Phone login always works as backup.</p>
               </div>
               <Button onClick={() => setShowGoogleHelp(false)} className="w-full mt-5 bg-zinc-800 hover:bg-zinc-700 text-white">
                 Got it
