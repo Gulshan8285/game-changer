@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Bitcoin, Mail, Lock, Eye, EyeOff, ArrowRight, Phone, AlertTriangle, Info, X } from 'lucide-react';
+import { Bitcoin, Mail, Lock, Eye, EyeOff, ArrowRight, Phone, AlertTriangle, Info, X, Scissors, ClipboardCopy, ClipboardPaste } from 'lucide-react';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -16,6 +16,7 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showGoogleHelp, setShowGoogleHelp] = useState(false);
+  const [copyCutDetected, setCopyCutDetected] = useState(false);
   const [siteContent, setSiteContent] = useState<Record<string, string>>({});
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
 
@@ -97,11 +98,26 @@ export default function LoginScreen() {
     completeGoogleLogin();
   }, [setUser, setNeedsTermsAcceptance, setScreen, setAppLoading]);
 
+  // ── Detect copy/cut on login form → block login ──
+  const handleCopyCutPaste = (e: React.ClipboardEvent) => {
+    const type = e.type;
+    if (type === 'copy' || type === 'cut') {
+      e.preventDefault();
+      setCopyCutDetected(true);
+      setTimeout(() => setCopyCutDetected(false), 4000);
+    }
+  };
+
   const isPhoneLogin = /^[0-9]+$/.test(email.trim());
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (copyCutDetected) {
+      setError('Copy/Cut detected! Please type your credentials manually.');
+      return;
+    }
 
     if (isPhoneLogin && email.trim().length !== 10) {
       setError('Phone number must be exactly 10 digits');
@@ -169,7 +185,7 @@ export default function LoginScreen() {
           <p className="text-zinc-400 mt-1">{siteContent.app_subtitle || 'Your gateway to Bitcoin in India'}</p>
         </div>
 
-        <Card className="bg-zinc-900/80 border-zinc-800 backdrop-blur-xl shadow-2xl">
+        <Card onCopy={handleCopyCutPaste} onCut={handleCopyCutPaste} className="bg-zinc-900/80 border-zinc-800 backdrop-blur-xl shadow-2xl">
           <CardHeader className="pb-2">
             <h2 className="text-xl font-semibold text-white">Welcome Back</h2>
             <p className="text-sm text-zinc-400">Sign in to your account</p>
@@ -226,7 +242,15 @@ export default function LoginScreen() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold py-5 shadow-lg shadow-amber-500/25 transition-all duration-300">
+              {/* Copy/Cut Warning Banner */}
+              {copyCutDetected && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-sm animate-pulse">
+                  <Scissors className="w-4 h-4 shrink-0" />
+                  <span>Copy/Cut detected! Type manually to login.</span>
+                  <button type="button" onClick={() => setCopyCutDetected(false)} className="ml-auto shrink-0 hover:text-red-300"><X className="w-3 h-3" /></button>
+                </div>
+              )}
+              <Button type="submit" disabled={loading || copyCutDetected} className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold py-5 shadow-lg shadow-amber-500/25 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed">
                 {loading ? (
                   <div className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Signing In...</div>
                 ) : (
