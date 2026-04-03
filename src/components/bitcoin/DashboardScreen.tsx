@@ -2571,7 +2571,7 @@ export default function DashboardScreen() {
       )}
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-200 dark:border-zinc-800/60">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl">
         <div className="max-w-lg mx-auto flex items-center justify-around py-2 px-4">
           <button onClick={() => setDashboardView('dashboard')} className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${dashboardView === 'dashboard' ? 'text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
             <BarChart3 className="w-5 h-5" />
