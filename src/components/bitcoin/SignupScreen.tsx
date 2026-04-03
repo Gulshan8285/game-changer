@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,24 @@ export default function SignupScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [siteContent, setSiteContent] = useState<Record<string, string>>({});
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
+
+  // Fetch site content from API
+  useEffect(() => {
+    const fetchContent = async () => {
+      try {
+        const res = await fetch('/api/content');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.content) {
+            setSiteContent(data.content);
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    fetchContent();
+  }, []);
 
   const updateField = (field: string, value: string) => { setForm((prev) => ({ ...prev, [field]: value })); setError(''); };
 
@@ -50,12 +67,17 @@ export default function SignupScreen() {
     e.preventDefault(); setError('');
     if (form.password !== form.confirmPassword) { setError('Passwords do not match'); return; }
     if (form.password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (form.phone && !/^[0-9]{10}$/.test(form.phone.replace(/\s+/g, ''))) { setError('Phone number must be exactly 10 digits'); return; }
     setLoading(true); setAppLoading(true);
     try {
       const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.name, email: form.email, password: form.password, phone: form.phone }) });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Signup failed'); return; }
-      processAuthResponse({ ...data, needsTermsAcceptance: true });
+      if (!res.ok) { setError(data.error || 'Signup failed'); }
+      else {
+        // Track signup to Google Sheet
+        fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signup', userId: data.user?.id, userName: form.name, userEmail: form.email, userPhone: form.phone, method: 'email' }) }).catch(() => {});
+        processAuthResponse({ ...data, needsTermsAcceptance: true });
+      }
     } catch { setError('Something went wrong. Please try again.'); }
     finally { setLoading(false); setAppLoading(false); }
   };
@@ -65,12 +87,18 @@ export default function SignupScreen() {
       setLoading(true); setAppLoading(true); setError('');
       try {
         const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${tokenResponse.access_token}` } });
-        if (!userInfoRes.ok) { setError('Failed to get Google user info'); setLoading(false); setAppLoading(false); return; }
+        if (!userInfoRes.ok) { setError('Failed to get Google user info'); }
+        else {
         const googleUser = await userInfoRes.json();
         const res = await fetch('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: googleUser.name, email: googleUser.email, avatar: googleUser.picture, isGoogleAuth: true }) });
         const data = await res.json();
-        if (!res.ok) { setError(data.error || 'Google signup failed'); return; }
-        processAuthResponse(data);
+        if (!res.ok) { setError(data.error || 'Google signup failed'); }
+        else {
+          // Track Google signup to Google Sheet
+          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signup', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
+          processAuthResponse(data);
+        }
+        }
       } catch { setError('Google signup failed.'); }
       finally { setLoading(false); setAppLoading(false); }
     },
@@ -92,7 +120,7 @@ export default function SignupScreen() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25 mb-4">
             <Bitcoin className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Create Account</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">{siteContent.signup_title || 'Create Account'}</h1>
           <p className="text-zinc-400 mt-1">Start your Bitcoin journey today</p>
         </div>
         <Card className="bg-zinc-900/80 border-zinc-800 backdrop-blur-xl shadow-2xl">
@@ -116,11 +144,26 @@ export default function SignupScreen() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-zinc-300 text-sm">Phone Number</Label>
+                <Label className="text-zinc-300 text-sm">Phone Number <span className="text-zinc-500">(10 digits)</span></Label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  {form.phone && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500" />}
-                  <Input type="tel" placeholder="+91 9876543210" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} className="pl-10 bg-zinc-800/50 border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500/50 focus:ring-amber-500/20" />
+                  {form.phone && form.phone.replace(/\s+/g, '').length === 10 && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500" />}
+                  <Input
+                    type="tel"
+                    placeholder="9876543210"
+                    value={form.phone}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, ''); // strip non-digits
+                      updateField('phone', val.length > 10 ? val.slice(0, 10) : val);
+                    }}
+                    maxLength={10}
+                    className={`pl-10 bg-zinc-800/50 border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500/50 focus:ring-amber-500/20 ${form.phone && form.phone.length > 0 && form.phone.length !== 10 ? 'border-red-500/50' : ''}`}
+                  />
+                  {form.phone && form.phone.length > 0 && (
+                    <p className={`text-xs mt-1 ${form.phone.length === 10 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {form.phone.length}/10 digits{form.phone.length !== 10 ? ' — must be exactly 10 digits' : ' ✓'}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="space-y-2">

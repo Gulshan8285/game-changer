@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import PageLayout from './PageLayout';
-import { Mail, Phone, MapPin, Clock, Send, MessageCircle, Globe, Headphones, CheckCircle2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, Send, MessageCircle, Globe, Headphones, CheckCircle2, Twitter, Instagram, Youtube } from 'lucide-react';
 
 export default function ContactUsScreen() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
@@ -81,17 +81,33 @@ export default function ContactUsScreen() {
             <span className="text-sm text-white font-medium">Follow Us</span>
           </div>
           <div className="grid grid-cols-4 gap-2">
-            {[
-              { name: 'Twitter', color: 'bg-sky-500/20 text-sky-400' },
-              { name: 'Instagram', color: 'bg-pink-500/20 text-pink-400' },
-              { name: 'Telegram', color: 'bg-blue-500/20 text-blue-400' },
-              { name: 'YouTube', color: 'bg-red-500/20 text-red-400' },
-            ].map((social) => (
-              <button key={social.name} className={`flex flex-col items-center gap-1.5 p-3 rounded-xl ${social.color} transition-colors`}>
-                <MessageCircle className="w-5 h-5" />
-                <span className="text-[10px] font-medium">{social.name}</span>
-              </button>
-            ))}
+            {(() => {
+              const socialLinks = [
+                { name: 'Twitter', url: contactInfo?.social_twitter || '', icon: Twitter, color: 'bg-sky-500/20 text-sky-400' },
+                { name: 'Instagram', url: contactInfo?.social_instagram || '', icon: Instagram, color: 'bg-pink-500/20 text-pink-400' },
+                { name: 'Telegram', url: contactInfo?.social_telegram || '', icon: Send, color: 'bg-blue-500/20 text-blue-400' },
+                { name: 'YouTube', url: contactInfo?.social_youtube || '', icon: Youtube, color: 'bg-red-500/20 text-red-400' },
+              ];
+              return socialLinks.map((link) => (
+                link.url ? (
+                  <a
+                    key={link.name}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl ${link.color} transition-colors`}
+                  >
+                    <link.icon className="w-5 h-5" />
+                    <span className="text-[10px] font-medium">{link.name}</span>
+                  </a>
+                ) : (
+                  <button key={link.name} className={`flex flex-col items-center gap-1.5 p-3 rounded-xl ${link.color} transition-colors opacity-50`}>
+                    <link.icon className="w-5 h-5" />
+                    <span className="text-[10px] font-medium">{link.name}</span>
+                  </button>
+                )
+              ));
+            })()}
           </div>
         </CardContent>
       </Card>

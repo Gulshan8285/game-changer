@@ -104,13 +104,13 @@ const SECTIONS = [
 ];
 
 export default function PrivacyPolicyScreen() {
-  const [customContent, setCustomContent] = useState<string | null>(null);
+  const [customContent, setCustomContent] = useState<Record<string, string> | null>(null);
   useEffect(() => {
     fetch('/api/content')
       .then(res => res.json())
       .then(data => {
-        if (data.success && data.content?.privacy_full_text) {
-          setCustomContent(data.content.privacy_full_text);
+        if (data.success) {
+          setCustomContent(data.content);
         }
       })
       .catch(() => {});
@@ -123,15 +123,15 @@ export default function PrivacyPolicyScreen() {
           <Shield className="w-8 h-8 text-white" />
         </div>
         <h2 className="text-2xl font-bold text-white">Privacy Policy</h2>
-        <p className="text-zinc-400 mt-1 text-sm">Last Updated: January 2025</p>
+        <p className="text-zinc-400 mt-1 text-sm">Last Updated: {customContent?.privacy_last_updated || 'January 2025'}</p>
         <p className="text-zinc-500 text-xs mt-2 max-w-sm mx-auto">
           Your privacy matters to us. This policy explains how BitPay Wallet collects, uses, protects, and shares your personal information.
         </p>
       </div>
 
-      {customContent ? (
+      {customContent?.privacy_full_text ? (
         <div className="space-y-4">
-          {customContent.split('\n\n').map((section, i) => {
+          {customContent!.privacy_full_text.split('\n\n').map((section, i) => {
             const lines = section.split('\n').filter(l => l.trim());
             if (lines.length === 0) return null;
             return (

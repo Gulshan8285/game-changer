@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import dynamic from 'next/dynamic';
 
@@ -17,6 +18,20 @@ const TermsPageScreen = dynamic(() => import('@/components/bitcoin/TermsPageScre
 
 export default function Home() {
   const { currentScreen, isAuthenticated, needsTermsAcceptance } = useAppStore();
+
+  // Prevent phone back button from killing the app
+  useEffect(() => {
+    // Push a dummy state so back button has somewhere to go
+    window.history.pushState(null, '', window.location.href);
+
+    const handlePopState = (e: PopStateEvent) => {
+      // Push again so next back press is also blocked
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Force terms screen if user needs to accept terms
   const effectiveScreen = (isAuthenticated && needsTermsAcceptance) ? 'terms' : currentScreen;

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import PageLayout from './PageLayout';
-import { Bitcoin, Shield, Zap, Users, Globe, Award, Heart, Star, Target, TrendingUp, Lock } from 'lucide-react';
+import { Bitcoin, Shield, Zap, Users, Globe, Award, Heart, Star, Target, TrendingUp, Lock, Eye, Scale, Rocket, ShieldCheck, Sparkles } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 function AboutContactButton() {
@@ -77,22 +77,47 @@ export default function AboutUsScreen() {
             <h3 className="text-white font-semibold">Our Values</h3>
           </div>
           <div className="grid grid-cols-1 gap-3">
-            {[
-              { icon: <Shield className="w-5 h-5 text-emerald-400" />, title: 'Security First', desc: '256-bit encryption, cold storage, and multi-factor authentication to protect your assets.' },
-              { icon: <Zap className="w-5 h-5 text-amber-400" />, title: 'Speed & Simplicity', desc: 'Buy Bitcoin in under 60 seconds with UPI, bank transfer, or card payments.' },
-              { icon: <Users className="w-5 h-5 text-blue-400" />, title: 'Customer Obsessed', desc: '24/7 customer support in English, Hindi, and regional languages.' },
-              { icon: <Globe className="w-5 h-5 text-purple-400" />, title: 'Transparency', desc: 'No hidden fees. Real-time INR pricing. Clear policies. What you see is what you get.' },
-              { icon: <Award className="w-5 h-5 text-pink-400" />, title: 'Compliance', desc: 'Fully compliant with RBI guidelines and Indian financial regulations.' },
-              { icon: <TrendingUp className="w-5 h-5 text-cyan-400" />, title: 'Innovation', desc: 'Continuously improving with the latest blockchain technology and DeFi features.' },
-            ].map((item, i) => (
-              <div key={i} className="flex gap-3 p-3 rounded-xl bg-zinc-800/30 border border-zinc-700/20">
-                <div className="shrink-0 mt-0.5">{item.icon}</div>
-                <div>
-                  <h4 className="text-white text-sm font-medium">{item.title}</h4>
-                  <p className="text-zinc-500 text-xs mt-0.5">{item.desc}</p>
-                </div>
-              </div>
-            ))}
+            {/* Icon mapping from string name to lucide-react component */}
+            {[(() => {
+              const iconMap: Record<string, any> = {
+                Shield, Zap, Heart, Eye, Scale, Rocket, Lock, Globe, Star, Award, TrendingUp, Users, ShieldCheck, Sparkles
+              };
+              const iconColorMap: Record<string, string> = {
+                Shield: 'text-emerald-400', Zap: 'text-amber-400', Heart: 'text-pink-400',
+                Eye: 'text-purple-400', Scale: 'text-pink-400', Rocket: 'text-cyan-400',
+                Lock: 'text-emerald-400', Globe: 'text-purple-400', Star: 'text-amber-400',
+                Award: 'text-pink-400', TrendingUp: 'text-cyan-400', Users: 'text-blue-400',
+                ShieldCheck: 'text-emerald-400', Sparkles: 'text-amber-400',
+              };
+              const defaultValues = [
+                { title: 'Security First', icon: 'Shield', desc: '256-bit encryption, cold storage, and multi-factor authentication to protect your assets.' },
+                { title: 'Speed & Simplicity', icon: 'Zap', desc: 'Buy Bitcoin in under 60 seconds with UPI, bank transfer, or card payments.' },
+                { title: 'Customer Obsessed', icon: 'Heart', desc: '24/7 customer support in English, Hindi, and regional languages.' },
+                { title: 'Transparency', icon: 'Eye', desc: 'No hidden fees. Real-time INR pricing. Clear policies. What you see is what you get.' },
+                { title: 'Compliance', icon: 'Scale', desc: 'Fully compliant with RBI guidelines and Indian financial regulations.' },
+                { title: 'Innovation', icon: 'Rocket', desc: 'Continuously improving with the latest blockchain technology and DeFi features.' },
+              ];
+              let valuesData = defaultValues;
+              if (content?.about_values) {
+                try {
+                  const parsed = JSON.parse(content.about_values);
+                  if (Array.isArray(parsed) && parsed.length > 0) valuesData = parsed;
+                } catch { /* use defaults */ }
+              }
+              return valuesData.map((v: any, i: number) => {
+                const IconComp = iconMap[v.icon] || Shield;
+                const iconColor = iconColorMap[v.icon] || 'text-amber-400';
+                return (
+                  <div key={i} className="flex gap-3 p-3 rounded-xl bg-zinc-800/30 border border-zinc-700/20">
+                    <div className="shrink-0 mt-0.5"><IconComp className={`w-5 h-5 ${iconColor}`} /></div>
+                    <div>
+                      <h4 className="text-white text-sm font-medium">{v.title}</h4>
+                      <p className="text-zinc-500 text-xs mt-0.5">{v.desc}</p>
+                    </div>
+                  </div>
+                );
+              });
+            })()]}
           </div>
         </CardContent>
       </Card>
@@ -100,9 +125,9 @@ export default function AboutUsScreen() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[
-          { label: 'Users', value: '50K+', color: 'text-amber-400' },
-          { label: 'Transactions', value: '2M+', color: 'text-emerald-400' },
-          { label: 'States', value: '28+', color: 'text-blue-400' },
+          { value: content?.about_stat_users || '50K+', label: content?.about_stat_users_label || 'Users', color: 'text-amber-400' },
+          { value: content?.about_stat_transactions || '2M+', label: content?.about_stat_transactions_label || 'Transactions', color: 'text-emerald-400' },
+          { value: content?.about_stat_states || '28+', label: content?.about_stat_states_label || 'States', color: 'text-blue-400' },
         ].map((stat, i) => (
           <Card key={i} className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm">
             <CardContent className="p-3 text-center">

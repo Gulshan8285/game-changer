@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
 
 async function rawQuery(sql: string) {
   return db.$queryRawUnsafe(sql)
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!checkAdminAuth(request)) return unauthorizedResponse()
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -24,24 +27,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (sortOrder !== undefined) sets.push(`sortOrder = ${sortOrder}`)
     sets.push(`updatedAt = datetime('now')`)
 
-    if (sets.length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    if (sets.length === 0) return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 })
 
     await rawQuery(`UPDATE InvestmentPlan SET ${sets.join(', ')} WHERE id = '${id}'`)
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Plan update error:', error)
-    return NextResponse.json({ error: 'Failed to update plan' }, { status: 500 })
+    return NextResponse.json({ success: false, error: 'Failed to update plan' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!checkAdminAuth(request)) return unauthorizedResponse()
+
   try {
     const { id } = await params
     await rawQuery(`DELETE FROM InvestmentPlan WHERE id = '${id}'`)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Plan delete error:', error)
-    return NextResponse.json({ error: 'Failed to delete plan' }, { status: 500 })
+    return NextResponse.json({ success: false, error: 'Failed to delete plan' }, { status: 500 })
   }
 }

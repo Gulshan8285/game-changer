@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Bitcoin, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Bitcoin, Mail, Lock, Eye, EyeOff, ArrowRight, Phone } from 'lucide-react';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -16,7 +16,24 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [siteContent, setSiteContent] = useState<Record<string, string>>({});
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
+
+  // Fetch site content from API
+  useEffect(() => {
+    const fetchContent = async () => {
+      try {
+        const res = await fetch('/api/content');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.content) {
+            setSiteContent(data.content);
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    fetchContent();
+  }, []);
 
   const processAuthResponse = useCallback((data: any) => {
     // Ensure user object always has termsAccepted field
@@ -30,20 +47,32 @@ export default function LoginScreen() {
     setScreen(data.needsTermsAcceptance ? 'terms' : 'dashboard');
   }, [setUser, setNeedsTermsAcceptance, setScreen]);
 
+  const isPhoneLogin = /^[0-9]+$/.test(email.trim());
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Validate: if digits only, must be exactly 10 digits
+    if (isPhoneLogin && email.trim().length !== 10) {
+      setError('Phone number must be exactly 10 digits');
+      return;
+    }
+
     setLoading(true);
     setAppLoading(true);
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Login failed'); return; }
-      processAuthResponse(data);
+      if (!res.ok) { setError(data.error || 'Login failed'); }
+      else {
+        fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', userId: data.user?.id, userName: data.user?.name, userEmail: email.trim(), method: 'email' }) }).catch(() => {});
+        processAuthResponse(data);
+      }
     } catch { setError('Something went wrong. Please try again.'); }
     finally { setLoading(false); setAppLoading(false); }
   };
@@ -57,7 +86,8 @@ export default function LoginScreen() {
         const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
         });
-        if (!userInfoRes.ok) { setError('Failed to get Google user info'); setLoading(false); setAppLoading(false); return; }
+        if (!userInfoRes.ok) { setError('Failed to get Google user info'); }
+        else {
         const googleUser = await userInfoRes.json();
         const res = await fetch('/api/auth/google', {
           method: 'POST',
@@ -65,8 +95,12 @@ export default function LoginScreen() {
           body: JSON.stringify({ name: googleUser.name, email: googleUser.email, avatar: googleUser.picture, isGoogleAuth: true }),
         });
         const data = await res.json();
-        if (!res.ok) { setError(data.error || 'Google login failed'); return; }
-        processAuthResponse(data);
+        if (!res.ok) { setError(data.error || 'Google login failed'); }
+        else {
+          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
+          processAuthResponse(data);
+        }
+        }
       } catch { setError('Google login failed. Please try again.'); }
       finally { setLoading(false); setAppLoading(false); }
     },
@@ -90,8 +124,8 @@ export default function LoginScreen() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25 mb-4">
             <Bitcoin className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">BitPay Wallet</h1>
-          <p className="text-zinc-400 mt-1">Your gateway to Bitcoin in India</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">{siteContent.app_name || 'BitPay Wallet'}</h1>
+          <p className="text-zinc-400 mt-1">{siteContent.app_subtitle || 'Your gateway to Bitcoin in India'}</p>
         </div>
 
         <Card className="bg-zinc-900/80 border-zinc-800 backdrop-blur-xl shadow-2xl">
@@ -105,10 +139,37 @@ export default function LoginScreen() {
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
               )}
               <div className="space-y-2">
-                <Label className="text-zinc-300 text-sm">Email Address</Label>
+                <Label className="text-zinc-300 text-sm">Email or Phone Number</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <Input type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10 bg-zinc-800/50 border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500/50 focus:ring-amber-500/20" required />
+                  {isPhoneLogin
+                    ? <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                    : <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  }
+                  <Input
+                    type="text"
+                    placeholder="you@example.com or 10-digit phone"
+                    value={email}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Only allow digits and valid email characters
+                      setEmail(val);
+                    }}
+                    onInput={(e) => {
+                      // If typing digits only, limit to 10
+                      const input = e.target as HTMLInputElement;
+                      if (/^[0-9]+$/.test(input.value) && input.value.length > 10) {
+                        input.value = input.value.slice(0, 10);
+                        setEmail(input.value);
+                      }
+                    }}
+                    className={`pl-10 bg-zinc-800/50 border-zinc-700 text-white placeholder-zinc-500 focus:border-amber-500/50 focus:ring-amber-500/20 ${isPhoneLogin && email.trim().length > 0 && email.trim().length !== 10 ? 'border-red-500/50' : ''}`}
+                    required
+                  />
+                  {isPhoneLogin && email.trim().length > 0 && (
+                    <p className={`text-xs mt-1 ${email.trim().length === 10 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {email.trim().length}/10 digits{email.trim().length !== 10 ? ' — must be exactly 10 digits' : ' ✓'}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="space-y-2">
@@ -146,7 +207,7 @@ export default function LoginScreen() {
             </div>
           </CardContent>
         </Card>
-        <p className="text-center text-zinc-600 text-xs mt-6">Secured with 256-bit encryption</p>
+        <p className="text-center text-zinc-600 text-xs mt-6">{siteContent.login_security_text || 'Secured with 256-bit encryption'}</p>
       </div>
     </div>
   );

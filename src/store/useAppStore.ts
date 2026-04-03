@@ -55,8 +55,8 @@ interface AppState {
   setBitcoinData: (price: any, history: any[]) => void;
 
   // Dashboard sub-view (shared across screens)
-  dashboardView: 'dashboard' | 'wallet' | 'history';
-  setDashboardView: (view: 'dashboard' | 'wallet' | 'history') => void;
+  dashboardView: 'dashboard' | 'wallet' | 'history' | 'notifications';
+  setDashboardView: (view: 'dashboard' | 'wallet' | 'history' | 'notifications') => void;
 
   // UI state
   isLoading: boolean;

@@ -7,59 +7,45 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Bitcoin, TrendingUp, TrendingDown, BarChart3, Wallet, ArrowUpRight, ArrowDownRight, ArrowLeft, RefreshCw, User, Bell, History, Shield, Zap, IndianRupee, Calendar, CircleDollarSign, CheckCircle2, Sun, Moon, X, Timer, Clock } from 'lucide-react';
+import { Bitcoin, TrendingUp, TrendingDown, BarChart3, Wallet, ArrowUpRight, ArrowDownRight, ArrowLeft, RefreshCw, User, Bell, History, Shield, Zap, IndianRupee, Calendar, CircleDollarSign, CheckCircle2, Sun, Moon, X, Timer, Clock, PauseCircle, PlayCircle } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
-// ── Animated Mini Sparkline for crypto coin rows ──
+// ── Lightweight Sparkline for crypto coin rows (no rAF — CSS transition handles smoothness) ──
 const AnimatedSparkline = memo(function AnimatedSparkline({ data, color }: { data: number[]; color: string }) {
   const [prices, setPrices] = useState(data);
-  const [displayPrices, setDisplayPrices] = useState(data);
-  const prevRef = useRef(data);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setPrices((prev) => {
-        prevRef.current = prev;
         const last = prev[prev.length - 1];
         const noise = (Math.random() - 0.5) * (Math.abs(last) * 0.004);
         return [...prev.slice(1), last + noise];
       });
-    }, 3000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [data]);
 
-  useEffect(() => {
-    const prev = prevRef.current;
-    if (prev.length !== prices.length) return;
-    let start: number | null = null;
-    const duration = 300;
-    const anim = (ts: number) => {
-      if (!start) start = ts;
-      const progress = Math.min((ts - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const interp = prev.map((p, i) => p + (prices[i] - p) * eased);
-      setDisplayPrices(interp);
-      if (progress < 1) requestAnimationFrame(anim);
-    };
-    requestAnimationFrame(anim);
-  }, [prices]);
+  if (!prices || prices.length === 0) return null;
 
-  if (!displayPrices || displayPrices.length === 0) return null;
-
-  const min = Math.min(...displayPrices);
-  const max = Math.max(...displayPrices);
+  let min = prices[0], max = prices[0];
+  for (let i = 1; i < prices.length; i++) {
+    if (prices[i] < min) min = prices[i];
+    if (prices[i] > max) max = prices[i];
+  }
   const range = max - min || 1;
   const w = 80;
   const h = 32;
   const pad = 2;
+  const len = prices.length;
 
-  const points = displayPrices.map((p, i) => {
-    const x = pad + (i / (displayPrices.length - 1)) * (w - 2 * pad);
+  const points = prices.map((p, i) => {
+    const x = pad + (i / (len - 1)) * (w - 2 * pad);
     const y = h - pad - ((p - min) / range) * (h - 2 * pad);
     return `${x},${y}`;
   });
 
-  const areaPath = `M${points.join(' L')} L${pad + ((displayPrices.length - 1) / (displayPrices.length - 1)) * (w - 2 * pad)},${h - pad} L${pad},${h - pad} Z`;
+  const lastX = pad + (w - 2 * pad);
+  const areaPath = `M${points.join(' L')} L${lastX},${h - pad} L${pad},${h - pad} Z`;
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-full">
@@ -132,26 +118,24 @@ const LiveChart = memo(function LiveChart({ basePrice, changePercent }: { basePr
     const interval = setInterval(() => {
       setPrices((prev) => {
         prevPricesRef.current = prev;
-        // Shift left, add new point at current live price with tiny noise
         const noise = (Math.random() - 0.5) * basePrice * 0.0003;
-        const newPrices = [...prev.slice(1), basePrice + noise];
-        return newPrices;
+        return [...prev.slice(1), basePrice + noise];
       });
-    }, 3000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [basePrice]);
 
-  // Smooth interpolation between old and new prices for animation
+  // Smooth interpolation between old and new prices
   useEffect(() => {
     const prev = prevPricesRef.current;
     if (prev.length !== prices.length) return;
 
     let start: number | null = null;
-    const duration = 500;
+    const duration = 400;
     const anim = (ts: number) => {
       if (!start) start = ts;
       const progress = Math.min((ts - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
       const interp = prev.map((p, i) => p + (prices[i] - p) * eased);
       setDisplayPrices(interp);
       if (progress < 1) requestAnimationFrame(anim);
@@ -242,7 +226,6 @@ const LiveCandlestickChart = memo(function LiveCandlestickChart({ basePrice, cha
       setCandles((prev) => {
         const lastClose = prev[prev.length - 1].close;
         const open = lastClose;
-        // Trend follows changePercent direction
         const bias = isUp ? 0.52 : 0.48;
         const change = (Math.random() - bias) * basePrice * 0.002;
         const close = open + change;
@@ -250,7 +233,7 @@ const LiveCandlestickChart = memo(function LiveCandlestickChart({ basePrice, cha
         const low = Math.min(open, close) - Math.random() * basePrice * 0.0008;
         return [...prev.slice(1), { open, close, high, low }];
       });
-    }, 2500);
+    }, 5000);
     return () => clearInterval(interval);
   }, [basePrice, changePercent, isUp]);
 
@@ -378,7 +361,23 @@ function formatCountdown(ms: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// ── Module-level formatINR (pure function, no re-creation per render) ──
+const formatINR = (value: number): string => {
+  if (value >= 10000000) return `₹${(value / 10000000).toFixed(2)} Cr`;
+  if (value >= 100000) return `₹${(value / 100000).toFixed(2)} L`;
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+};
+
+// Default fallback plans (module-level constant to avoid re-creation on every render)
+const DEFAULT_PLANS = [
+  { name: 'Basic', investment: 5000, daily: 300, monthly: 9000, total: 14000, color: 'bg-emerald-500', iconBg: 'bg-emerald-500/20', iconColor: 'text-emerald-400', btnBg: 'bg-emerald-500 hover:bg-emerald-600' },
+  { name: 'Standard', investment: 8000, daily: 700, monthly: 21000, total: 29000, color: 'bg-gradient-to-r from-amber-500 to-orange-500', iconBg: 'bg-amber-500/20', iconColor: 'text-amber-400', btnBg: 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600' },
+  { name: 'Premium', investment: 10000, daily: 1500, monthly: 45000, total: 55000, color: 'bg-purple-500', iconBg: 'bg-purple-500/20', iconColor: 'text-purple-400', btnBg: 'bg-purple-500 hover:bg-purple-600' },
+];
+
 export default function DashboardScreen() {
+  // ── Store & Theme at TOP (fixes stale closure bug) ──
+  const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, logout, dashboardView, setDashboardView } = useAppStore();
   const { theme, setTheme } = useTheme();
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('30d');
@@ -389,11 +388,19 @@ export default function DashboardScreen() {
   const [showNotif, setShowNotif] = useState(false);
   const [showAllCoins, setShowAllCoins] = useState(false);
   const [showInvestPlans, setShowInvestPlans] = useState(false);
+  // Cancel plan confirmation dialog
+  const [cancelPlanId, setCancelPlanId] = useState<number | null>(null);
+  const [cancellingPlan, setCancellingPlan] = useState(false);
+  // UPI payment states
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'completing' | 'completed' | 'cancelled'>('idle');
+  const [upiId, setUpiId] = useState('gulshanyadav62000-6@okicici');
+  const [upiName, setUpiName] = useState('Gulshan Yadav');
   // showWallet/showHistory removed — now using store's dashboardView
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+  const [withdrawnTotal, setWithdrawnTotal] = useState(0);
   
   const [transactions, setTransactions] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -402,13 +409,15 @@ export default function DashboardScreen() {
   // ── User's active investments (stored in localStorage) ──
   const [investments, setInvestments] = useState<any[]>([]);
   const [countdowns, setCountdowns] = useState<Record<number, string>>({});
+  const [timerPaused, setTimerPaused] = useState(false);
   const [investmentsReady, setInvestmentsReady] = useState(false);
+  const pausedAtRef = useRef<number | null>(null);
+  const timerPausedRef = useRef(timerPaused);
+  timerPausedRef.current = timerPaused;
   const investmentsRef = useRef(investments);
   investmentsRef.current = investments;
   const transactionsRef = useRef(transactions);
   transactionsRef.current = transactions;
-  const notificationsRef = useRef(notifications);
-  notificationsRef.current = notifications;
 
   const saveInvestments = (items: any[]) => {
     setInvestments(items);
@@ -432,16 +441,24 @@ export default function DashboardScreen() {
     if (savedNotifs) {
       try { setNotifications(JSON.parse(savedNotifs)); } catch { /* ignore */ }
     }
+    const savedWithdrawn = localStorage.getItem('btc-wallet-withdrawn');
+    if (savedWithdrawn) {
+      try { setWithdrawnTotal(JSON.parse(savedWithdrawn)); } catch { /* ignore */ }
+    }
+    const savedTimerPaused = localStorage.getItem('btc-timer-paused');
+    if (savedTimerPaused === 'true') {
+      setTimerPaused(true);
+    }
     setInvestmentsReady(true);
   }, []);
 
   // ── 24-hour auto-earning system with countdown timer ──
+  // Step 1: On mount + when investments change, credit missed earnings & set initial countdowns
   useEffect(() => {
     if (!investmentsReady) return;
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
-    // Step 1: Backward-compat + credit missed earnings immediately
-    const invsCopy = JSON.parse(JSON.stringify(investmentsRef.current));
+    const invsCopy = investments.map(inv => ({ ...inv }));
     let needSave = false;
     for (let i = 0; i < invsCopy.length; i++) {
       const inv = invsCopy[i];
@@ -468,25 +485,26 @@ export default function DashboardScreen() {
     }
     if (needSave) saveInvestments(invsCopy);
 
-    // Step 2: Calculate initial countdowns immediately
-    const calcCountdowns = () => {
-      const invs = investmentsRef.current;
-      if (invs.length === 0) return {};
-      const cds: Record<number, string> = {};
-      for (const inv of invs) {
-        if (!inv.lastEarningAt) continue;
-        const elapsed = Date.now() - new Date(inv.lastEarningAt).getTime();
-        const remaining = TWENTY_FOUR_HOURS - elapsed;
-        cds[inv.id] = formatCountdown(remaining);
-      }
-      return cds;
-    };
+    // Calculate initial countdowns RIGHT AWAY for ALL current investments
+    const cds: Record<number, string> = {};
+    for (const inv of (needSave ? invsCopy : investments)) {
+      if (!inv.lastEarningAt) continue;
+      const elapsed = Date.now() - new Date(inv.lastEarningAt).getTime();
+      const remaining = TWENTY_FOUR_HOURS - elapsed;
+      cds[inv.id] = formatCountdown(remaining);
+    }
+    setCountdowns(cds);
+  }, [investments, investmentsReady]);
 
-    // Set initial countdowns RIGHT AWAY (no 1-second delay)
-    setCountdowns(calcCountdowns());
+  // Step 2: 1-second interval — ALWAYS runs when investmentsReady, skips when paused
+  useEffect(() => {
+    if (!investmentsReady) return;
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
-    // Step 3: 1-second interval for live countdown + auto-credit
     const interval = setInterval(() => {
+      // Use ref to get current timerPaused value (closure fix)
+      if (timerPausedRef.current) return;
+
       const invs = investmentsRef.current;
       if (invs.length === 0) return;
 
@@ -503,7 +521,6 @@ export default function DashboardScreen() {
         const remaining = TWENTY_FOUR_HOURS - elapsed;
 
         if (remaining <= 0) {
-          // Credit earning!
           anyCredited = true;
           creditedTotal += inv.daily;
           updatedInvs[i] = { ...inv, earned: inv.earned + inv.daily, lastEarningAt: new Date().toISOString() };
@@ -527,6 +544,34 @@ export default function DashboardScreen() {
     return () => clearInterval(interval);
   }, [investmentsReady]);
 
+  // Persist timer pause state to localStorage
+  useEffect(() => {
+    localStorage.setItem('btc-timer-paused', String(timerPaused));
+  }, [timerPaused]);
+
+  // Handle pause/resume with proper time adjustment
+  const toggleTimerPause = useCallback(() => {
+    if (timerPaused) {
+      // Resuming: adjust lastEarningAt forward by the pause duration
+      // so no retroactive earnings are credited
+      if (pausedAtRef.current) {
+        const pauseDuration = Date.now() - pausedAtRef.current;
+        const invs = investmentsRef.current;
+        const updated = invs.map(inv => ({
+          ...inv,
+          lastEarningAt: new Date(new Date(inv.lastEarningAt).getTime() + pauseDuration).toISOString()
+        }));
+        saveInvestments(updated);
+        pausedAtRef.current = null;
+      }
+      setTimerPaused(false);
+    } else {
+      // Pausing: record when we paused
+      pausedAtRef.current = Date.now();
+      setTimerPaused(true);
+    }
+  }, [timerPaused]);
+
   // ── Live simulated price fluctuation ──
   const [livePrice, setLivePrice] = useState<{ inr: number; usd: number; change24h: number } | null>(null);
   const [liveStats, setLiveStats] = useState<{ marketCap: number; volume24h: number } | null>(null);
@@ -542,34 +587,61 @@ export default function DashboardScreen() {
     const ticker = setInterval(() => {
       setLiveCoinPrices((prev) => {
         const next: Record<string, { price: number; change: number }> = {};
-        CRYPTO_COINS.forEach((c) => {
+        for (const c of CRYPTO_COINS) {
           const curr = prev[c.symbol] || { price: c.price, change: c.change24h };
-          // Small price fluctuation
           const delta = (Math.random() - 0.48) * curr.price * 0.002;
           const newPrice = Math.max(curr.price * 0.97, curr.price + delta);
-          // Small change % fluctuation
           const changeDelta = (Math.random() - 0.5) * 0.08;
           const newChange = Math.max(-8, Math.min(8, curr.change + changeDelta));
           next[c.symbol] = { price: newPrice, change: newChange };
-        });
+        }
         return next;
       });
-    }, 3000);
+    }, 5000);
     return () => clearInterval(ticker);
   }, []);
 
-  const plan1 = { name: 'Basic', investment: 5000, daily: 300, monthly: 9000, total: 14000, color: 'bg-emerald-500', iconBg: 'bg-emerald-500/20', iconColor: 'text-emerald-400', btnBg: 'bg-emerald-500 hover:bg-emerald-600' };
-  const plan2 = { name: 'Standard', investment: 8000, daily: 700, monthly: 21000, total: 29000, color: 'bg-gradient-to-r from-amber-500 to-orange-500', iconBg: 'bg-amber-500/20', iconColor: 'text-amber-400', btnBg: 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600' };
-  const plan3 = { name: 'Premium', investment: 10000, daily: 1500, monthly: 45000, total: 55000, color: 'bg-purple-500', iconBg: 'bg-purple-500/20', iconColor: 'text-purple-400', btnBg: 'bg-purple-500 hover:bg-purple-600' };
+  // ── Investment Plans (from API or fallback) ──
+  const [apiPlans, setApiPlans] = useState<any[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [siteContent, setSiteContent] = useState<Record<string, string>>({});
 
-  const handleInvest = async () => {
-    if (!selectedPlan || investing) return;
-    setInvesting(true);
-    // Save plan data before clearing selectedPlan
-    const planData = { ...selectedPlan };
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    setInvesting(false);
-    // Add to investments
+  // Fetch plans + content in parallel (single useEffect, no duplicate API calls)
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoadingPlans(true);
+      try {
+        const [plansRes, contentRes] = await Promise.all([
+          fetch('/api/plans').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/content').then(r => r.ok ? r.json() : null).catch(() => null),
+        ]);
+        if (plansRes?.success && plansRes.plans?.length > 0) setApiPlans(plansRes.plans);
+        if (contentRes?.success && contentRes.content) {
+          setSiteContent(contentRes.content);
+          if (contentRes.content.upi_id) setUpiId(contentRes.content.upi_id);
+          if (contentRes.content.upi_name) setUpiName(contentRes.content.upi_name);
+        }
+      } catch { /* use fallbacks */ }
+      finally { setLoadingPlans(false); }
+    };
+    fetchData();
+  }, []);
+
+  // Map API plans to component format, falling back to defaults
+  const plans = useMemo(() => {
+    if (apiPlans.length > 0) {
+      return apiPlans.map((p: any) => ({
+        ...p,
+        investment: p.price,
+        total: p.totalReturn,
+        btnBg: p.color?.includes('gradient') ? p.color + ' hover:opacity-90' : p.color + ' hover:' + p.color?.replace('-500', '-600'),
+      }));
+    }
+    return DEFAULT_PLANS;
+  }, [apiPlans]);
+
+  // ── Helper: complete investment (create record + tx + notif) ──
+  const completeInvestment = useCallback((planData: any) => {
     const newInvestment = {
       id: Date.now(),
       planName: planData.name,
@@ -586,23 +658,136 @@ export default function DashboardScreen() {
       createdAt: new Date().toISOString(),
       lastEarningAt: new Date().toISOString(),
     };
-    saveInvestments([...investments, newInvestment]);
-    // Record transaction
-    const tx = { id: Date.now(), type: 'invest', planName: planData.name, amount: planData.investment, date: new Date().toLocaleString('en-IN'), desc: `${planData.name} Plan investment` };
-    const newTxs = [tx, ...transactions];
+    saveInvestments([...investmentsRef.current, newInvestment]);
+    // Record transaction (use ref to avoid stale state)
+    const tx = { id: Date.now() + 1, type: 'invest', planName: planData.name, amount: planData.investment, date: new Date().toLocaleString('en-IN'), desc: `${planData.name} Plan investment` };
+    const newTxs = [tx, ...transactionsRef.current];
     setTransactions(newTxs);
     localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
     // Add notification
-    const notif = { id: Date.now(), icon: 'Zap', title: 'Investment Confirmed', desc: `₹${planData.investment.toLocaleString('en-IN')} invested in ${planData.name} Plan`, time: 'Just now', dot: 'bg-amber-500', read: false };
-    const newNotifs = [notif, ...notifications];
-    setNotifications(newNotifs);
-    localStorage.setItem('btc-notifications', JSON.stringify(newNotifs));
-    setSelectedPlan(null);
-    setShowInvestPlans(false);
-    setInvestSuccess(true);
-    setTimeout(() => setInvestSuccess(false), 3000);
+    const notif = { id: Date.now() + 2, icon: 'Zap', title: 'Investment Confirmed', desc: `₹${planData.investment.toLocaleString('en-IN')} invested in ${planData.name} Plan`, time: 'Just now', dot: 'bg-amber-500', read: false };
+    setNotifications(prev => { const n = [notif, ...prev]; localStorage.setItem('btc-notifications', JSON.stringify(n)); return n; });
+    // Track to Google Sheet
+    fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'invest', userId: user?.id, userName: user?.name, userEmail: user?.email, userPhone: user?.phone, planName: planData.name, amount: planData.investment, method: 'upi' }) }).catch(() => {});
+  }, [investmentsRef, transactionsRef, user]);
+
+  // ── Cancel entire plan ──
+  const handleCancelPlan = useCallback((planId: number) => {
+    const inv = investmentsRef.current.find((i: any) => i.id === planId);
+    if (!inv) return;
+
+    setCancellingPlan(true);
+
+    setTimeout(() => {
+      // Remove investment
+      const updatedInvestments = investmentsRef.current.filter((i: any) => i.id !== planId);
+      saveInvestments(updatedInvestments);
+
+      // Record cancellation transaction (use ref)
+      const tx = { id: Date.now() + 3, type: 'cancel', planName: inv.planName, amount: inv.investment, date: new Date().toLocaleString('en-IN'), desc: `${inv.planName} Plan - Cancelled` };
+      const newTxs = [tx, ...transactionsRef.current];
+      setTransactions(newTxs);
+      localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
+
+      // Add notification
+      const notif = { id: Date.now() + 4, icon: 'X', title: 'Plan Cancelled', desc: `${inv.planName} Plan (₹${inv.investment.toLocaleString('en-IN')}) has been cancelled. Earned: ₹${inv.earned.toLocaleString('en-IN')}`, time: 'Just now', dot: 'bg-red-500', read: false };
+      setNotifications(prev => { const n = [notif, ...prev]; localStorage.setItem('btc-notifications', JSON.stringify(n)); return n; });
+
+      // Track to Google Sheet
+      fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel', userId: user?.id, userName: user?.name, userEmail: user?.email, userPhone: user?.phone, planName: inv.planName, amount: inv.investment }) }).catch(() => {});
+
+      setCancellingPlan(false);
+      setCancelPlanId(null);
+    }, 800);
+  }, [investmentsRef, transactionsRef, user]);
+
+  const handleInvest = async () => {
+    if (!selectedPlan || investing) return;
+
+    setInvesting(true);
+    const planData = { ...selectedPlan };
+    const amount = planData.investment.toFixed(2);
+    const txnRef = `BTC${Date.now()}`;
+
+    // Store plan data for auto-completion after return
+    (window as any).__pendingPlan = planData;
+
+    // Build UPI deep link parameters (standard format)
+    const upiParams = new URLSearchParams({
+      pa: upiId,
+      pn: upiName || 'BitPay Wallet',
+      am: amount,
+      cu: 'INR',
+      tn: `${planData.name} Plan - ₹${planData.investment}`,
+      tr: txnRef,        // Transaction reference (unique per payment)
+      mode: '00',        // Mode: 00 = UPI Collect (non-editable amount)
+    });
+
+    // UPI deep link — opens the default UPI app directly on payment page
+    const upiLink = `upi://pay?${upiParams.toString()}`;
+
+    // Open UPI app directly
+    setPaymentStatus('opened');
+    setInvesting(false);
+
+    try {
+      window.location.href = upiLink;
+    } catch {
+      // Silent fallback — user can use manual UPI payment shown in the dialog
+    }
+
+    setPaymentStatus('waiting');
+
+    // Auto-detect user returning from UPI app
+    let returnedFromUPI = false;
+    const handleReturn = () => {
+      if (returnedFromUPI) return;
+      returnedFromUPI = true;
+      cleanup();
+
+      // User came back from UPI app → auto-complete payment after 1.5s
+      setPaymentStatus('completing');
+
+      setTimeout(() => {
+        const pendingPlan = (window as any).__pendingPlan;
+        if (pendingPlan) {
+          completeInvestment(pendingPlan);
+          delete (window as any).__pendingPlan;
+        }
+        // Auto-close dialog immediately + show success toast
+        setPaymentStatus('completed');
+        setSelectedPlan(null);
+        setShowInvestPlans(false);
+        setInvestSuccess(true);
+        setTimeout(() => setInvestSuccess(false), 3000);
+      }, 1500);
+    };
+
+    document.addEventListener('visibilitychange', handleReturn);
+    window.addEventListener('focus', handleReturn);
+
+    // Auto-cancel after 3 minutes if user never returns
+    const timeout = setTimeout(() => {
+      if (!returnedFromUPI) {
+        cleanup();
+        setPaymentStatus('cancelled');
+        delete (window as any).__pendingPlan;
+        setTimeout(() => {
+          setPaymentStatus('idle');
+          setSelectedPlan(null);
+        }, 1500);
+      }
+    }, 3 * 60 * 1000);
+
+    const cleanup = () => {
+      document.removeEventListener('visibilitychange', handleReturn);
+      window.removeEventListener('focus', handleReturn);
+      clearTimeout(timeout);
+    };
+
+    (window as any).__upiCleanup = cleanup;
   };
-  const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, logout, dashboardView, setDashboardView } = useAppStore();
+  // useAppStore() moved to top of component to fix stale closure bug
 
   // When user goes to profile from bottom nav and comes back, view stays as is
   // This is the desired behavior - they return to where they were
@@ -629,7 +814,7 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     fetchBitcoinData();
-    const interval = setInterval(() => fetchBitcoinData(), 30000);
+    const interval = setInterval(() => fetchBitcoinData(), 60000);
     return () => clearInterval(interval);
   }, [fetchBitcoinData]);
 
@@ -665,22 +850,11 @@ export default function DashboardScreen() {
           volume24h: prev.volume24h + (Math.random() - 0.5) * bitcoinPrice.volume24h * 0.0005,
         };
       });
-    }, 3000);
+    }, 5000);
     return () => clearInterval(ticker);
   }, [bitcoinPrice]);
 
-  const formatINR = (value: number) => {
-    if (value >= 10000000) return `₹${(value / 10000000).toFixed(2)} Cr`;
-    if (value >= 100000) return `₹${(value / 100000).toFixed(2)} L`;
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
-  };
-
-  const getFilteredHistory = () => {
-    if (!bitcoinHistory.length) return [];
-    if (timeRange === '24h') return bitcoinHistory.slice(-24);
-    if (timeRange === '7d') return bitcoinHistory.slice(-168);
-    return bitcoinHistory;
-  };
+  // ── getFilteredHistory removed — was dead code, never used in JSX ──
 
   // Auto-scrolling activity feed
   const activityNames = [
@@ -729,18 +903,16 @@ export default function DashboardScreen() {
     if (!el) return;
     let scrollPaused = false;
     let scrollDirection = 1;
-    let speed = 0.6;
-    let animFrame: number;
+    const speed = 1;
 
-    const step = () => {
+    // Use 30fps interval instead of 60fps rAF for better battery life
+    const interval = setInterval(() => {
       if (!scrollPaused) {
         el.scrollTop += speed * scrollDirection;
         if (el.scrollTop >= el.scrollHeight - el.clientHeight - 5) scrollDirection = -1;
         if (el.scrollTop <= 0) scrollDirection = 1;
       }
-      animFrame = requestAnimationFrame(step);
-    };
-    animFrame = requestAnimationFrame(step);
+    }, 33);
 
     const handleMouseEnter = () => { scrollPaused = true; };
     const handleMouseLeave = () => { scrollPaused = false; };
@@ -753,7 +925,7 @@ export default function DashboardScreen() {
     el.addEventListener('touchend', handleTouchEnd);
 
     return () => {
-      cancelAnimationFrame(animFrame);
+      clearInterval(interval);
       el.removeEventListener('mouseenter', handleMouseEnter);
       el.removeEventListener('mouseleave', handleMouseLeave);
       el.removeEventListener('touchstart', handleTouchStart);
@@ -770,6 +942,7 @@ export default function DashboardScreen() {
   );
   const totalInvested = useMemo(() => investments.reduce((s, i) => s + i.investment, 0), [investments]);
   const totalEarned = useMemo(() => investments.reduce((s, i) => s + i.earned, 0), [investments]);
+  const availableBalance = useMemo(() => Math.max(0, totalEarned - withdrawnTotal), [totalEarned, withdrawnTotal]);
   const dailyProfit = useMemo(() => investments.reduce((s, i) => s + i.daily, 0), [investments]);
   const unreadNotifCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
@@ -794,7 +967,7 @@ export default function DashboardScreen() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">Welcome back</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{siteContent.dashboard_welcome_text || 'Welcome back'}</p>
               <h2 className="text-zinc-900 dark:text-white font-semibold text-lg">{user?.name || 'User'}</h2>
             </div>
           </div>
@@ -854,7 +1027,7 @@ export default function DashboardScreen() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                 </span>
               </div>
-              <p className="text-2xl font-bold text-zinc-900 dark:text-white">₹{totalEarned.toLocaleString('en-IN')}</p>
+              <p className="text-2xl font-bold text-zinc-900 dark:text-white">₹{availableBalance.toLocaleString('en-IN')}</p>
               <button
                 onClick={() => { setShowWithdraw(true); }}
                 disabled={investments.length === 0}
@@ -880,8 +1053,8 @@ export default function DashboardScreen() {
               {investments.length === 0 ? (
                 <div className="space-y-3">
                   {/* Show zero-value investment cards */}
-                  {[plan1, plan2, plan3].map((plan, idx) => (
-                    <div key={idx} className="rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700/50 opacity-60">
+                  {plans.map((plan: any, idx: number) => (
+                    <div key={plan.id || idx} className="rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700/50 opacity-60">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2.5">
                           <div className={`w-10 h-10 rounded-xl ${plan.iconBg} flex items-center justify-center`}>
@@ -945,7 +1118,7 @@ export default function DashboardScreen() {
                         </div>
                         <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
                           <p className="text-[9px] text-zinc-500">Total Return</p>
-                          <p className="text-xs font-bold text-amber-500">₹{inv.totalReturn.toLocaleString('en-IN')}</p>
+                          <p className="text-xs font-bold text-amber-500">₹{inv.totalReturn?.toLocaleString?.('en-IN') ?? '₹0'}</p>
                         </div>
                         <div className="bg-white dark:bg-zinc-900/50 rounded-lg p-2 text-center">
                           <p className="text-[9px] text-zinc-500">Earned</p>
@@ -955,41 +1128,62 @@ export default function DashboardScreen() {
                       {/* Progress bar */}
                       <div className="relative">
                         <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
-                          <div className={`h-full rounded-full transition-all duration-500 ${inv.color}`} style={{ width: `${Math.min(100, (inv.earned / inv.totalReturn) * 100)}%` }} />
+                          <div className={`h-full rounded-full transition-all duration-500 ${inv.color}`} style={{ width: `${Math.min(100, (inv.earned / (inv.totalReturn || 1)) * 100)}%` }} />
                         </div>
-                        <p className="text-[9px] text-zinc-500 mt-1 text-right">{((inv.earned / inv.totalReturn) * 100).toFixed(1)}% of ₹{inv.totalReturn.toLocaleString('en-IN')}</p>
+                        <p className="text-[9px] text-zinc-500 mt-1 text-right">{((inv.earned / (inv.totalReturn || 1)) * 100).toFixed(1)}% of ₹{inv.totalReturn?.toLocaleString?.('en-IN') ?? '₹0'}</p>
                       </div>
                       {/* 24h Countdown Timer - Prominent */}
-                      <div className="mt-3 rounded-xl bg-emerald-500/8 border border-emerald-500/15 p-2.5">
+                      <div className={`mt-3 rounded-xl border p-2.5 ${timerPaused ? 'bg-red-500/8 border-red-500/15' : 'bg-emerald-500/8 border-emerald-500/15'}`}>
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5 text-emerald-500" />
-                            <span className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">Next Earning</span>
+                            <Clock className={`w-3.5 h-3.5 ${timerPaused ? 'text-red-400' : 'text-emerald-500'}`} />
+                            <span className={`text-[11px] font-semibold ${timerPaused ? 'text-red-400' : 'text-zinc-600 dark:text-zinc-300'}`}>Next Earning</span>
+                            {timerPaused && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold animate-pulse">PAUSED</span>
+                            )}
                           </div>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">+₹{inv.daily}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${timerPaused ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>+₹{inv.daily}</span>
+                            <button
+                              onClick={toggleTimerPause}
+                              className={`p-1 rounded-full transition-all duration-200 ${timerPaused ? 'text-emerald-400 hover:bg-emerald-500/20' : 'text-red-400 hover:bg-red-500/20'}`}
+                              title={timerPaused ? 'Resume Timer' : 'Pause Timer'}
+                            >
+                              {timerPaused ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />}
+                            </button>
+                          </div>
                         </div>
                         {/* Animated Countdown Boxes */}
                         <div className="flex items-center justify-center gap-1">
                           <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 rounded-md bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
-                              <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">{(countdowns[inv.id] || '24:00:00').split(':')[0]}</span>
+                            <div className={`w-8 h-8 rounded-md border flex items-center justify-center ${timerPaused ? 'bg-red-500/10 border-red-500/20 opacity-60' : 'bg-emerald-500/15 border-emerald-500/25'}`}>
+                              <span className={`text-xs font-mono font-bold ${timerPaused ? 'text-red-300 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{(countdowns[inv.id] || '24:00:00').split(':')[0]}</span>
                             </div>
                             <span className="text-[7px] text-zinc-400 mt-0.5">HRS</span>
                           </div>
-                          <span className="text-xs font-mono font-bold text-emerald-500 animate-pulse mb-2">:</span>
+                          <span className={`text-xs font-mono font-bold mb-2 ${timerPaused ? 'text-red-300' : 'text-emerald-500 animate-pulse'}`}>:</span>
                           <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 rounded-md bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-                              <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">{(countdowns[inv.id] || '24:00:00').split(':')[1]}</span>
+                            <div className={`w-8 h-8 rounded-md border flex items-center justify-center ${timerPaused ? 'bg-red-500/10 border-red-500/20 opacity-60' : 'bg-amber-500/15 border-amber-500/25'}`}>
+                              <span className={`text-xs font-mono font-bold ${timerPaused ? 'text-red-300 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}>{(countdowns[inv.id] || '24:00:00').split(':')[1]}</span>
                             </div>
                             <span className="text-[7px] text-zinc-400 mt-0.5">MIN</span>
                           </div>
-                          <span className="text-xs font-mono font-bold text-amber-500 animate-pulse mb-2">:</span>
+                          <span className={`text-xs font-mono font-bold mb-2 ${timerPaused ? 'text-red-300' : 'text-amber-500 animate-pulse'}`}>:</span>
                           <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 rounded-md bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
-                              <span className="text-xs font-mono font-bold text-orange-600 dark:text-orange-400">{(countdowns[inv.id] || '24:00:00').split(':')[2]}</span>
+                            <div className={`w-8 h-8 rounded-md border flex items-center justify-center ${timerPaused ? 'bg-red-500/10 border-red-500/20 opacity-60' : 'bg-orange-500/15 border-orange-500/25'}`}>
+                              <span className={`text-xs font-mono font-bold ${timerPaused ? 'text-red-300 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'}`}>{(countdowns[inv.id] || '24:00:00').split(':')[2]}</span>
                             </div>
                             <span className="text-[7px] text-zinc-400 mt-0.5">SEC</span>
                           </div>
+                        </div>
+                        {/* Cancel Plan Button */}
+                        <div className="mt-2.5 flex justify-end">
+                          <button
+                            onClick={() => setCancelPlanId(inv.id)}
+                            className="text-[10px] px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors font-medium"
+                          >
+                            Cancel Plan
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1103,6 +1297,69 @@ export default function DashboardScreen() {
         </div>
         )}
 
+        {/* NOTIFICATIONS VIEW */}
+        {currentView === 'notifications' && (
+        <div className="max-w-lg mx-auto space-y-4 pt-2">
+          {/* Back Button Header */}
+          <div className="flex items-center gap-3 mb-2">
+            <button onClick={() => setDashboardView('dashboard')} className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/50 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-95">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <Bell className="w-5 h-5 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Notifications</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{unreadNotifCount > 0 ? `${unreadNotifCount} unread` : 'All caught up!'}</p>
+              </div>
+              {unreadNotifCount > 0 && (
+                <button onClick={() => { setNotifications(prev => { const updated = prev.map(n => ({...n, read: true})); localStorage.setItem('btc-notifications', JSON.stringify(updated)); return updated; }); }} className="px-3 py-1.5 rounded-xl text-xs font-medium bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-all">
+                  Mark all read
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Notification List */}
+          <Card className="bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 backdrop-blur-sm">
+            <CardContent className="p-4">
+              <div className="max-h-[60vh] overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Bell className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-zinc-400 dark:text-zinc-500">No notifications yet</p>
+                    <p className="text-xs text-zinc-300 dark:text-zinc-600 mt-1">Your notifications will appear here</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {notifications.map((notif: any) => {
+                      const iconMap: Record<string, any> = { Zap: <Zap className="w-4 h-4 text-amber-500" />, CheckCircle2: <CheckCircle2 className="w-4 h-4 text-emerald-500" />, Shield: <Shield className="w-4 h-4 text-blue-500" />, TrendingUp: <TrendingUp className="w-4 h-4 text-emerald-500" />, Wallet: <Wallet className="w-4 h-4 text-amber-500" /> };
+                      return (
+                        <div key={notif.id} onClick={() => setNotifications(prev => { const updated = prev.map((n: any) => n.id === notif.id ? {...n, read: true} : n); localStorage.setItem('btc-notifications', JSON.stringify(updated)); return updated; })} className={`flex gap-3 p-4 rounded-xl transition-colors cursor-pointer border ${!notif.read ? 'bg-amber-500/5 border-amber-500/20' : 'bg-zinc-50 dark:bg-zinc-800/50 border-transparent hover:border-zinc-200 dark:hover:border-zinc-700/50'}`}>
+                          <div className="relative mt-0.5 shrink-0">
+                            <span className={`absolute -left-0.5 top-1.5 w-1.5 h-1.5 rounded-full ${notif.dot || 'bg-zinc-400'}`} />
+                            <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400">{iconMap[notif.icon] || <Zap className="w-4 h-4 text-amber-500" />}</div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className={`text-xs font-semibold ${!notif.read ? 'text-zinc-900 dark:text-zinc-200' : 'text-zinc-500 dark:text-zinc-400'}`}>{notif.title}</p>
+                              {!notif.read && <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />}
+                            </div>
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2">{notif.desc}</p>
+                            <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1">{notif.time}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        )}
+
         {/* DASHBOARD VIEW */}
         {currentView === 'dashboard' && (
         <div className="max-w-lg mx-auto space-y-4">
@@ -1130,41 +1387,60 @@ export default function DashboardScreen() {
                   const cd = countdowns[inv.id] || '24:00:00';
                   const [hh, mm, ss] = cd.split(':');
                   return (
-                    <div key={inv.id} className="rounded-xl bg-gradient-to-r from-emerald-500/8 to-amber-500/8 border border-emerald-500/15 p-3">
+                    <div key={inv.id} className={`rounded-xl border p-3 ${timerPaused ? 'bg-gradient-to-r from-red-500/8 to-red-500/5 border-red-500/15' : 'bg-gradient-to-r from-emerald-500/8 to-amber-500/8 border-emerald-500/15'}`}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                            <Timer className="w-3.5 h-3.5 text-emerald-500" />
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${timerPaused ? 'bg-red-500/20' : 'bg-emerald-500/20'}`}>
+                            <Timer className={`w-3.5 h-3.5 ${timerPaused ? 'text-red-400' : 'text-emerald-500'}`} />
                           </div>
                           <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{inv.planName} Plan</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">+₹{inv.daily}</span>
+                          {timerPaused && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold animate-pulse">PAUSED</span>
+                          )}
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${timerPaused ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>+₹{inv.daily}</span>
                         </div>
+                        <button
+                          onClick={toggleTimerPause}
+                          className={`p-1 rounded-full transition-all duration-200 ${timerPaused ? 'text-emerald-400 hover:bg-emerald-500/20' : 'text-red-400 hover:bg-red-500/20'}`}
+                          title={timerPaused ? 'Resume Timer' : 'Pause Timer'}
+                        >
+                          {timerPaused ? <PlayCircle className="w-5 h-5" /> : <PauseCircle className="w-5 h-5" />}
+                        </button>
                       </div>
                       {/* Animated Countdown Boxes */}
                       <div className="flex items-center justify-center gap-1.5">
                         {/* Hours */}
                         <div className="flex flex-col items-center">
-                          <div className="w-10 h-10 rounded-lg bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
-                            <span className="text-base font-mono font-bold text-emerald-600 dark:text-emerald-400">{hh}</span>
+                          <div className={`w-10 h-10 rounded-lg border flex items-center justify-center ${timerPaused ? 'bg-red-500/10 border-red-500/20 opacity-60' : 'bg-emerald-500/15 border-emerald-500/25'}`}>
+                            <span className={`text-base font-mono font-bold ${timerPaused ? 'text-red-300 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{hh}</span>
                           </div>
                           <span className="text-[8px] text-zinc-400 mt-1">HRS</span>
                         </div>
-                        <span className="text-base font-mono font-bold text-emerald-500 animate-pulse mb-3">:</span>
+                        <span className={`text-base font-mono font-bold mb-3 ${timerPaused ? 'text-red-300' : 'text-emerald-500 animate-pulse'}`}>:</span>
                         {/* Minutes */}
                         <div className="flex flex-col items-center">
-                          <div className="w-10 h-10 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-                            <span className="text-base font-mono font-bold text-amber-600 dark:text-amber-400">{mm}</span>
+                          <div className={`w-10 h-10 rounded-lg border flex items-center justify-center ${timerPaused ? 'bg-red-500/10 border-red-500/20 opacity-60' : 'bg-amber-500/15 border-amber-500/25'}`}>
+                            <span className={`text-base font-mono font-bold ${timerPaused ? 'text-red-300 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}>{mm}</span>
                           </div>
                           <span className="text-[8px] text-zinc-400 mt-1">MIN</span>
                         </div>
-                        <span className="text-base font-mono font-bold text-amber-500 animate-pulse mb-3">:</span>
+                        <span className={`text-base font-mono font-bold mb-3 ${timerPaused ? 'text-red-300' : 'text-amber-500 animate-pulse'}`}>:</span>
                         {/* Seconds */}
                         <div className="flex flex-col items-center">
-                          <div className="w-10 h-10 rounded-lg bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
-                            <span className="text-base font-mono font-bold text-orange-600 dark:text-orange-400">{ss}</span>
+                          <div className={`w-10 h-10 rounded-lg border flex items-center justify-center ${timerPaused ? 'bg-red-500/10 border-red-500/20 opacity-60' : 'bg-orange-500/15 border-orange-500/25'}`}>
+                            <span className={`text-base font-mono font-bold ${timerPaused ? 'text-red-300 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'}`}>{ss}</span>
                           </div>
                           <span className="text-[8px] text-zinc-400 mt-1">SEC</span>
                         </div>
+                      </div>
+                      {/* Cancel Plan Button */}
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          onClick={() => setCancelPlanId(inv.id)}
+                          className="text-[10px] px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors font-medium"
+                        >
+                          Cancel Plan
+                        </button>
                       </div>
                     </div>
                   );
@@ -1181,132 +1457,205 @@ export default function DashboardScreen() {
           </div>
 
           <div className="grid grid-cols-3 gap-2.5">
-            {/* Plan 1 - Basic */}
-            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-emerald-500/10 via-zinc-900/80 to-zinc-900/60 border border-emerald-500/20 p-3.5 flex flex-col">
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-emerald-400" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1">Basic</span>
-              <p className="text-lg font-bold text-white">₹5,000</p>
-              <p className="text-[10px] text-zinc-500 mb-3">Investment</p>
-              <div className="space-y-2 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <IndianRupee className="w-3 h-3 text-emerald-400 shrink-0" />
-                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-emerald-400">₹300</span>/day</span>
+            {plans.map((plan: any, idx: number) => (
+              <div key={plan.id || idx} className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-zinc-500/10 via-zinc-900/80 to-zinc-900/60 border border-zinc-500/20 p-3.5 flex flex-col">
+                <div className={`absolute top-0 left-0 right-0 h-[2px] ${plan.color}`} />
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${plan.iconColor} mb-1`}>{plan.name}</span>
+                <p className="text-lg font-bold text-white">₹{plan.investment.toLocaleString('en-IN')}</p>
+                <p className="text-[10px] text-zinc-500 mb-3">Investment</p>
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <IndianRupee className={`w-3 h-3 ${plan.iconColor} shrink-0`} />
+                    <span className="text-[11px] text-zinc-300"><span className={`font-semibold ${plan.iconColor}`}>₹{plan.daily.toLocaleString('en-IN')}</span>/day</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className={`w-3 h-3 ${plan.iconColor} shrink-0`} />
+                    <span className="text-[11px] text-zinc-300"><span className={`font-semibold ${plan.iconColor}`}>₹{plan.monthly.toLocaleString('en-IN')}</span>/month</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-amber-400">₹9,000</span>/month</span>
+                <div className="mt-3 pt-2.5 border-t border-zinc-700/50">
+                  <p className="text-[10px] text-zinc-500 mb-0.5">Total Return</p>
+                  <p className={`text-sm font-bold ${plan.iconColor}`}>₹{plan.total.toLocaleString('en-IN')}</p>
                 </div>
+                <button onClick={() => {
+                  if (investments.length > 0) {
+                    setCancelPlanId(-1);
+                  } else {
+                    setSelectedPlan(plan);
+                    setPaymentStatus('idle');
+                  }
+                }} className={`mt-2.5 w-full py-2 rounded-lg ${plan.btnBg} text-white text-xs font-semibold transition-all duration-200 active:scale-95`}>
+                  Invest Now
+                </button>
               </div>
-              <div className="mt-3 pt-2.5 border-t border-zinc-700/50">
-                <p className="text-[10px] text-zinc-500 mb-0.5">Total Return</p>
-                <p className="text-sm font-bold text-emerald-400">₹14,000</p>
-              </div>
-              <button onClick={() => setSelectedPlan(plan1)} className="mt-2.5 w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
-                Invest Now
-              </button>
-            </div>
-
-            {/* Plan 2 - Standard */}
-            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-amber-500/15 via-zinc-900/80 to-zinc-900/60 border border-amber-500/30 p-3.5 flex flex-col ring-1 ring-amber-500/10">
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-500 to-orange-500" />
-              <div className="absolute -top-0 -right-0">
-                <div className="bg-amber-500 text-black text-[8px] font-bold px-2 py-0.5 rounded-bl-lg">POPULAR</div>
-              </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1">Standard</span>
-              <p className="text-lg font-bold text-white">₹8,000</p>
-              <p className="text-[10px] text-zinc-500 mb-3">Investment</p>
-              <div className="space-y-2 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <IndianRupee className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-amber-400">₹700</span>/day</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-amber-400">₹21,000</span>/month</span>
-                </div>
-              </div>
-              <div className="mt-3 pt-2.5 border-t border-zinc-700/50">
-                <p className="text-[10px] text-zinc-500 mb-0.5">Total Return</p>
-                <p className="text-sm font-bold text-amber-400">₹29,000</p>
-              </div>
-              <button onClick={() => setSelectedPlan(plan2)} className="mt-2.5 w-full py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95 shadow-lg shadow-amber-500/20">
-                Invest Now
-              </button>
-            </div>
-
-            {/* Plan 3 - Premium */}
-            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-purple-500/10 via-zinc-900/80 to-zinc-900/60 border border-purple-500/20 p-3.5 flex flex-col">
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 to-pink-500" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-1">Premium</span>
-              <p className="text-lg font-bold text-white">₹10,000</p>
-              <p className="text-[10px] text-zinc-500 mb-3">Investment</p>
-              <div className="space-y-2 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <IndianRupee className="w-3 h-3 text-purple-400 shrink-0" />
-                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-purple-400">₹1,500</span>/day</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3 h-3 text-purple-400 shrink-0" />
-                  <span className="text-[11px] text-zinc-300"><span className="font-semibold text-purple-400">₹45,000</span>/month</span>
-                </div>
-              </div>
-              <div className="mt-3 pt-2.5 border-t border-zinc-700/50">
-                <p className="text-[10px] text-zinc-500 mb-0.5">Total Return</p>
-                <p className="text-sm font-bold text-purple-400">₹55,000</p>
-              </div>
-              <button onClick={() => setSelectedPlan(plan3)} className="mt-2.5 w-full py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
-                Invest Now
-              </button>
-            </div>
+            ))}
           </div>
 
-          {/* Invest Dialog */}
+          {/* Invest Dialog - Automatic UPI Payment Flow */}
           {selectedPlan && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setSelectedPlan(null)}>
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-              <div className="relative w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-700/50 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="relative w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-700/50 shadow-2xl overflow-hidden">
                 <div className={`h-1.5 ${selectedPlan.color}`} />
                 <div className="p-6">
-                  <div className="text-center mb-5">
-                    <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl ${selectedPlan.iconBg} mb-3`}>
-                      <CircleDollarSign className={`w-7 h-7 ${selectedPlan.iconColor}`} />
-                    </div>
-                    <h3 className="text-xl font-bold text-white">{selectedPlan.name} Plan</h3>
-                    <p className="text-sm text-zinc-400 mt-1">Confirm your investment</p>
-                  </div>
-                  <div className="bg-zinc-800/50 rounded-xl p-4 space-y-3 mb-5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">Investment Amount</span>
-                      <span className="text-sm font-bold text-white">₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">Daily Profit</span>
-                      <span className={`text-sm font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.daily.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">Monthly Profit</span>
-                      <span className={`text-sm font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.monthly.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="border-t border-zinc-700/50 pt-3 flex items-center justify-between">
-                      <span className="text-sm font-medium text-zinc-300">Total Return</span>
-                      <span className={`text-lg font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.total.toLocaleString('en-IN')}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <button onClick={handleInvest} disabled={investing} className={`w-full py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
-                      {investing ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Processing...
+
+                  {/* STEP 1: Plan confirmation (idle) */}
+                  {paymentStatus === 'idle' && (
+                    <>
+                      <div className="text-center mb-5">
+                        <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl ${selectedPlan.iconBg} mb-3`}>
+                          <CircleDollarSign className={`w-7 h-7 ${selectedPlan.iconColor}`} />
                         </div>
-                      ) : (
-                        `Pay ₹${selectedPlan.investment.toLocaleString('en-IN')} & Invest`
-                      )}
-                    </button>
-                    <button onClick={() => setSelectedPlan(null)} className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors text-sm font-medium">
-                      Cancel
-                    </button>
-                  </div>
+                        <h3 className="text-xl font-bold text-white">{selectedPlan.name} Plan</h3>
+                        <p className="text-sm text-zinc-400 mt-1">Confirm your investment</p>
+                      </div>
+                      {/* Merchant Info - prominently displayed */}
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-4">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                            <User className="w-4 h-4 text-amber-400" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-white">{upiName || 'Gulshan Yadav'}</p>
+                            <p className="text-[11px] font-mono text-amber-400">{upiId}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-zinc-800/50 rounded-xl p-4 space-y-3 mb-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-400">Investment Amount</span>
+                          <span className="text-sm font-bold text-white">₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-400">Daily Profit</span>
+                          <span className={`text-sm font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.daily.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-400">Monthly Profit</span>
+                          <span className={`text-sm font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.monthly.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="border-t border-zinc-700/50 pt-3 flex items-center justify-between">
+                          <span className="text-sm font-medium text-zinc-300">Total Return</span>
+                          <span className={`text-lg font-bold ${selectedPlan.iconColor}`}>₹{selectedPlan.total.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+                      {/* UPI Payment Info */}
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 mb-5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-xs font-semibold text-emerald-400">UPI PAYMENT</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400">Amount will be auto-filled — ₹{selectedPlan.investment.toLocaleString('en-IN')} will be sent to <span className="text-amber-400 font-semibold">{upiName || 'Gulshan Yadav'}</span></p>
+                      </div>
+                      <div className="space-y-3">
+                        <button onClick={handleInvest} disabled={investing} className={`w-full py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
+                          {investing ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              Opening UPI...
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-2">
+                              <span>Pay ₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
+                              <ArrowUpRight className="w-4 h-4" />
+                            </div>
+                          )}
+                        </button>
+                        <button onClick={() => { setSelectedPlan(null); setPaymentStatus('idle'); }} className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors text-sm font-medium">
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* STEP 2: UPI app opened — waiting */}
+                  {(paymentStatus === 'opened' || paymentStatus === 'waiting') && (
+                    <div className="text-center py-2">
+                      <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-amber-500/15 mb-4 relative">
+                        <div className="absolute inset-0 rounded-full border-4 border-amber-500/20 animate-ping" />
+                        <div className="w-10 h-10 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+                      </div>
+                      <h3 className="text-lg font-bold text-white">Payment in Progress...</h3>
+                      <p className="text-sm text-zinc-400 mt-1 mb-4">Complete payment in your UPI app</p>
+                      {/* Merchant name prominently at top */}
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                            <User className="w-4 h-4 text-amber-400" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-sm font-bold text-white">{upiName || 'Gulshan Yadav'}</p>
+                            <p className="text-[11px] font-mono text-amber-400">{upiId}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-zinc-800/50 rounded-xl p-4 space-y-2.5 mb-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-400">Plan</span>
+                          <span className="text-sm font-semibold text-white">{selectedPlan.name}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-400">Amount</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-bold text-emerald-400">₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700/50 text-zinc-400 font-medium">Locked</span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 animate-pulse">
+                        ⏳ Waiting for payment completion...
+                      </p>
+                      {/* Manual UPI option: Copy UPI ID to pay with any app */}
+                      <div className="mt-4 pt-3 border-t border-zinc-700/50">
+                        <p className="text-[11px] text-zinc-500 mb-2">UPI app not opening? Pay manually:</p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(upiId).then(() => {
+                            const btn = e.currentTarget;
+                            btn.textContent = '✓ Copied!';
+                            setTimeout(() => { btn.textContent = 'Copy UPI ID'; }, 2000);
+                          }); }}
+                          className="text-xs font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 hover:bg-amber-500/20 transition-colors"
+                        >Copy UPI ID</button>
+                        <p className="text-[10px] text-zinc-600 mt-1.5">Open any UPI app → Pay to <span className="text-amber-500/70">{upiId}</span></p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 3: Auto-completing (user returned from UPI app) */}
+                  {paymentStatus === 'completing' && (
+                    <div className="text-center py-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/20 mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400 animate-bounce" />
+                      </div>
+                      <h3 className="text-lg font-bold text-emerald-400">Verifying Payment...</h3>
+                      <p className="text-sm text-zinc-400 mt-2">Please wait</p>
+                      <div className="mt-3 w-full h-1 rounded-full bg-zinc-800 overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full animate-[loading_2s_ease-in-out]" style={{ width: '100%' }} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 4: Payment completed — auto-closes */}
+                  {paymentStatus === 'completed' && (
+                    <div className="text-center py-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/20 mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                      </div>
+                      <h3 className="text-lg font-bold text-emerald-400">Payment Successful! 🎉</h3>
+                      <p className="text-sm text-zinc-400 mt-2">{selectedPlan.name} Plan is now active</p>
+                    </div>
+                  )}
+
+                  {/* STEP 5: Payment cancelled — auto-closes */}
+                  {paymentStatus === 'cancelled' && (
+                    <div className="text-center py-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-500/20 mb-4">
+                        <X className="w-8 h-8 text-red-400" />
+                      </div>
+                      <h3 className="text-lg font-bold text-red-400">Payment Cancelled</h3>
+                      <p className="text-sm text-zinc-400 mt-2">No amount was charged</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1317,46 +1666,6 @@ export default function DashboardScreen() {
             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[101] flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-medium shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2">
               <CheckCircle2 className="w-5 h-5" />
               Investment successful! 🎉
-            </div>
-          )}
-
-          {/* Notification Dropdown */}
-          {showNotif && (
-            <div className="fixed inset-0 z-[100]" onClick={() => setShowNotif(false)}>
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-              <div className="absolute top-20 right-4 w-80 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[101] overflow-hidden animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Notifications</h3>
-                  <button onClick={() => setShowNotif(false)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"><X className="w-4 h-4" /></button>
-                </div>
-                <div className="max-h-[300px] overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Bell className="w-8 h-8 text-zinc-300 dark:text-zinc-700 mx-auto mb-2" />
-                      <p className="text-xs text-zinc-400 dark:text-zinc-600">No notifications yet</p>
-                    </div>
-                  ) : notifications.slice(0, 10).map((notif) => {
-                    const iconMap: Record<string, any> = { Zap: <Zap className="w-4 h-4 text-amber-500" />, CheckCircle2: <CheckCircle2 className="w-4 h-4 text-emerald-500" />, Shield: <Shield className="w-4 h-4 text-blue-500" />, TrendingUp: <TrendingUp className="w-4 h-4 text-emerald-500" />, Wallet: <Wallet className="w-4 h-4 text-amber-500" /> };
-                    return (
-                      <div key={notif.id} onClick={() => setNotifications(prev => { const updated = prev.map(n => n.id === notif.id ? {...n, read: true} : n); localStorage.setItem('btc-notifications', JSON.stringify(updated)); return updated; })} className={`flex gap-3 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer border-b border-zinc-50 dark:border-zinc-800/50 last:border-0 ${!notif.read ? 'bg-amber-500/5' : ''}`}>
-                        <div className="relative mt-0.5">
-                          <span className={`absolute -left-0.5 top-1.5 w-1.5 h-1.5 rounded-full ${notif.dot}`} />
-                          <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400">{iconMap[notif.icon] || <Zap className="w-4 h-4 text-amber-500" />}</div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-xs font-semibold ${!notif.read ? 'text-zinc-900 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-400'}`}>{notif.title}</p>
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-1">{notif.desc}</p>
-                          <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1">{notif.time}</p>
-                        </div>
-                        {!notif.read && <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 text-center">
-                  <button className="text-xs font-medium text-amber-500 hover:text-amber-400 transition-colors">View All Notifications</button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1517,7 +1826,7 @@ export default function DashboardScreen() {
                 <p className="text-xs text-zinc-500 mb-1">Market Cap</p>
                 {showStats ? (
                   <p className="text-zinc-900 dark:text-white font-semibold text-lg tabular-nums">
-                    <AnimatedNumber value={showStats.marketCap} decimals={0} prefix="₹" />
+                    {formatINR(showStats.marketCap)}
                   </p>
                 ) : (
                   <Skeleton className="h-6 w-28 bg-zinc-200 dark:bg-zinc-800" />
@@ -1529,7 +1838,7 @@ export default function DashboardScreen() {
                 <p className="text-xs text-zinc-500 mb-1">24h Volume</p>
                 {showStats ? (
                   <p className="text-zinc-900 dark:text-white font-semibold text-lg tabular-nums">
-                    <AnimatedNumber value={showStats.volume24h} decimals={0} prefix="₹" />
+                    {formatINR(showStats.volume24h)}
                   </p>
                 ) : (
                   <Skeleton className="h-6 w-28 bg-zinc-200 dark:bg-zinc-800" />
@@ -1639,6 +1948,170 @@ export default function DashboardScreen() {
         )}
       </main>
 
+      {/* Already have a plan warning - when user tries to invest in 2nd plan */}
+      {cancelPlanId === -1 && (() => {
+        const activeInv = investments.length > 0 ? investments[0] : null;
+        return (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setCancelPlanId(null)} />
+            <div className="relative w-full max-w-sm rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl overflow-hidden">
+              <div className="h-1.5 bg-amber-500" />
+              <div className="p-6">
+                <div className="text-center mb-5">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/20 mb-3">
+                    <Shield className="w-7 h-7 text-amber-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">1 Plan at a Time</h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Aap ek time pe sirf ek plan use kar sakte hain</p>
+                </div>
+                {activeInv && (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-5">
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold uppercase tracking-wider mb-2">Currently Active Plan</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-500 dark:text-zinc-400">Plan</span>
+                        <span className="text-sm font-bold text-zinc-900 dark:text-white">{activeInv.planName}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-zinc-500 dark:text-zinc-400">Invested</span>
+                        <span className="text-sm font-bold text-zinc-900 dark:text-white">₹{activeInv.investment.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-5">
+                  <p className="text-[11px] text-red-500 dark:text-red-400 text-center font-medium">⚠️ Pehle current plan ko cancel karein, phir nayi plan invest karein</p>
+                </div>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => {
+                      setCancelPlanId(null);
+                      setDashboardView('wallet');
+                    }}
+                    className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    Go to Wallet — Cancel Plan
+                  </button>
+                  <button
+                    onClick={() => setCancelPlanId(null)}
+                    className="w-full py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/50 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700/50 transition-colors text-sm font-medium"
+                  >
+                    Baad Mein
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Cancel Plan Confirmation Dialog */}
+      {cancelPlanId !== null && cancelPlanId !== -1 && (() => {
+        const cancelInv = investments.find((i: any) => i.id === cancelPlanId);
+        return cancelInv && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !cancellingPlan && setCancelPlanId(null)} />
+            <div className="relative w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-700/50 shadow-2xl overflow-hidden">
+              <div className="h-1.5 bg-red-500" />
+              <div className="p-6">
+                <div className="text-center mb-5">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-red-500/20 mb-3">
+                    <X className="w-7 h-7 text-red-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Cancel Plan?</h3>
+                  <p className="text-sm text-zinc-400 mt-1">This action cannot be undone</p>
+                </div>
+                <div className="bg-zinc-800/50 rounded-xl p-4 space-y-2 mb-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">Plan</span>
+                    <span className="text-sm font-bold text-white">{cancelInv.planName}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">Invested</span>
+                    <span className="text-sm font-bold text-red-400">₹{cancelInv.investment.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">Earned so far</span>
+                    <span className="text-sm font-bold text-emerald-400">₹{cancelInv.earned.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="border-t border-zinc-700/50 pt-2 flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">Will be lost</span>
+                    <span className="text-sm font-bold text-red-400">₹{Math.max(0, cancelInv.investment - cancelInv.earned).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-5">
+                  <p className="text-[11px] text-red-400 text-center font-medium">⚠️ Your invested amount (₹{cancelInv.investment.toLocaleString('en-IN')}) and all future earnings will be lost</p>
+                </div>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => handleCancelPlan(cancelPlanId)}
+                    disabled={cancellingPlan}
+                    className="w-full py-3.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold transition-all duration-200 active:scale-[0.98] disabled:opacity-60"
+                  >
+                    {cancellingPlan ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Cancelling...
+                      </div>
+                    ) : (
+                      'Yes, Cancel Plan'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setCancelPlanId(null)}
+                    disabled={cancellingPlan}
+                    className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors text-sm font-medium disabled:opacity-60"
+                  >
+                    Keep Plan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Notification Dropdown - visible on ALL pages */}
+      {showNotif && (
+        <div className="fixed inset-0 z-[100]" onClick={() => setShowNotif(false)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="absolute top-20 right-4 w-80 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-2xl z-[101] overflow-hidden animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">Notifications</h3>
+              <button onClick={() => setShowNotif(false)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="max-h-[300px] overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="text-center py-8">
+                  <Bell className="w-8 h-8 text-zinc-300 dark:text-zinc-700 mx-auto mb-2" />
+                  <p className="text-xs text-zinc-400 dark:text-zinc-600">No notifications yet</p>
+                </div>
+              ) : notifications.slice(0, 10).map((notif) => {
+                const iconMap: Record<string, any> = { Zap: <Zap className="w-4 h-4 text-amber-500" />, CheckCircle2: <CheckCircle2 className="w-4 h-4 text-emerald-500" />, Shield: <Shield className="w-4 h-4 text-blue-500" />, TrendingUp: <TrendingUp className="w-4 h-4 text-emerald-500" />, Wallet: <Wallet className="w-4 h-4 text-amber-500" /> };
+                return (
+                  <div key={notif.id} onClick={() => setNotifications(prev => { const updated = prev.map(n => n.id === notif.id ? {...n, read: true} : n); localStorage.setItem('btc-notifications', JSON.stringify(updated)); return updated; })} className={`flex gap-3 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer border-b border-zinc-50 dark:border-zinc-800/50 last:border-0 ${!notif.read ? 'bg-amber-500/5' : ''}`}>
+                    <div className="relative mt-0.5">
+                      <span className={`absolute -left-0.5 top-1.5 w-1.5 h-1.5 rounded-full ${notif.dot}`} />
+                      <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400">{iconMap[notif.icon] || <Zap className="w-4 h-4 text-amber-500" />}</div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-semibold ${!notif.read ? 'text-zinc-900 dark:text-zinc-200' : 'text-zinc-600 dark:text-zinc-400'}`}>{notif.title}</p>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-1">{notif.desc}</p>
+                      <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1">{notif.time}</p>
+                    </div>
+                    {!notif.read && <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 text-center">
+              <button onClick={() => { setShowNotif(false); setDashboardView('notifications'); }} className="text-xs font-medium text-amber-500 hover:text-amber-400 transition-colors">View All Notifications</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Invest Plans Modal - opens from Quick Actions Invest button */}
       {showInvestPlans && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center" onClick={() => setShowInvestPlans(false)}>
@@ -1657,107 +2130,55 @@ export default function DashboardScreen() {
 
             {/* Plans */}
             <div className="px-5 pb-5 space-y-3 max-h-[60vh] overflow-y-auto">
-              {/* Plan 1 - Basic */}
-              <div className="relative rounded-2xl border-2 border-zinc-200 dark:border-zinc-700/50 p-4 hover:border-emerald-500/50 transition-all cursor-pointer active:scale-[0.98]" onClick={() => { setSelectedPlan(plan1); }}>
+              {loadingPlans ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-48 w-full rounded-2xl" />
+                  ))}
+                </div>
+              ) : (
+              plans.map((plan: any, idx: number) => (
+              <div key={plan.id || idx} className="relative rounded-2xl border-2 border-zinc-200 dark:border-zinc-700/50 p-4 transition-all cursor-pointer active:scale-[0.98]" onClick={() => {
+                if (investments.length > 0) {
+                  setCancelPlanId(-1);
+                  setShowInvestPlans(false);
+                } else {
+                  setSelectedPlan(plan);
+                  setShowInvestPlans(false);
+                }
+              }}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-                      <CircleDollarSign className="w-5 h-5 text-emerald-400" />
+                    <div className={`w-11 h-11 rounded-xl ${plan.iconBg} flex items-center justify-center`}>
+                      <CircleDollarSign className={`w-5 h-5 ${plan.iconColor}`} />
                     </div>
                     <div>
-                      <p className="text-base font-bold text-zinc-900 dark:text-white">Basic Plan</p>
-                      <p className="text-xs text-zinc-500">For beginners</p>
+                      <p className="text-base font-bold text-zinc-900 dark:text-white">{plan.name} Plan</p>
+                      <p className="text-xs text-zinc-500">Investment plan</p>
                     </div>
                   </div>
-                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-[10px]">Popular</Badge>
+                  <Badge className={`${plan.iconBg} ${plan.iconColor} border-zinc-200 dark:border-zinc-700/50 text-[10px]`}>{plan.name}</Badge>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
                     <p className="text-[10px] text-zinc-500">Investment</p>
-                    <p className="text-sm font-bold text-zinc-900 dark:text-white">₹5,000</p>
+                    <p className="text-sm font-bold text-zinc-900 dark:text-white">₹{plan.investment.toLocaleString('en-IN')}</p>
                   </div>
                   <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
                     <p className="text-[10px] text-zinc-500">Daily Profit</p>
-                    <p className="text-sm font-bold text-emerald-400">₹300</p>
+                    <p className={`text-sm font-bold ${plan.iconColor}`}>₹{plan.daily.toLocaleString('en-IN')}</p>
                   </div>
                   <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
                     <p className="text-[10px] text-zinc-500">Total Return</p>
-                    <p className="text-sm font-bold text-emerald-400">₹14,000</p>
+                    <p className={`text-sm font-bold ${plan.iconColor}`}>₹{plan.total.toLocaleString('en-IN')}</p>
                   </div>
                 </div>
-                <button className="mt-3 w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
-                  Invest ₹5,000
+                <button className={`mt-3 w-full py-2.5 rounded-xl text-white text-xs font-semibold transition-all duration-200 ${plan.btnBg} active:scale-95`}>
+                  Invest ₹{plan.investment.toLocaleString('en-IN')}
                 </button>
               </div>
-
-              {/* Plan 2 - Standard */}
-              <div className="relative rounded-2xl border-2 border-amber-500/40 p-4 bg-amber-500/5 dark:bg-amber-500/5 hover:border-amber-500/70 transition-all cursor-pointer active:scale-[0.98] ring-2 ring-amber-500/10" onClick={() => { setSelectedPlan(plan2); }}>
-                <div className="absolute -top-0 right-4">
-                  <div className="bg-amber-500 text-black text-[10px] font-bold px-3 py-1 rounded-b-xl">BEST VALUE</div>
-                </div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center">
-                      <CircleDollarSign className="w-5 h-5 text-amber-400" />
-                    </div>
-                    <div>
-                      <p className="text-base font-bold text-zinc-900 dark:text-white">Standard Plan</p>
-                      <p className="text-xs text-zinc-500">Most popular</p>
-                    </div>
-                  </div>
-                  <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-[10px]">Recommended</Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-zinc-500">Investment</p>
-                    <p className="text-sm font-bold text-zinc-900 dark:text-white">₹8,000</p>
-                  </div>
-                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-zinc-500">Daily Profit</p>
-                    <p className="text-sm font-bold text-amber-400">₹700</p>
-                  </div>
-                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-zinc-500">Total Return</p>
-                    <p className="text-sm font-bold text-amber-400">₹29,000</p>
-                  </div>
-                </div>
-                <button className="mt-3 w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95 shadow-lg shadow-amber-500/20">
-                  Invest ₹8,000
-                </button>
-              </div>
-
-              {/* Plan 3 - Premium */}
-              <div className="relative rounded-2xl border-2 border-zinc-200 dark:border-zinc-700/50 p-4 hover:border-purple-500/50 transition-all cursor-pointer active:scale-[0.98]" onClick={() => { setSelectedPlan(plan3); }}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                      <CircleDollarSign className="w-5 h-5 text-purple-400" />
-                    </div>
-                    <div>
-                      <p className="text-base font-bold text-zinc-900 dark:text-white">Premium Plan</p>
-                      <p className="text-xs text-zinc-500">Maximum returns</p>
-                    </div>
-                  </div>
-                  <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/30 text-[10px]">Premium</Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-zinc-500">Investment</p>
-                    <p className="text-sm font-bold text-zinc-900 dark:text-white">₹10,000</p>
-                  </div>
-                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-zinc-500">Daily Profit</p>
-                    <p className="text-sm font-bold text-purple-400">₹1,500</p>
-                  </div>
-                  <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-zinc-500">Total Return</p>
-                    <p className="text-sm font-bold text-purple-400">₹55,000</p>
-                  </div>
-                </div>
-                <button className="mt-3 w-full py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold transition-all duration-200 active:scale-95">
-                  Invest ₹10,000
-                </button>
-              </div>
+              ))
+              )}
             </div>
           </div>
         </div>
@@ -1800,7 +2221,7 @@ export default function DashboardScreen() {
                   placeholder="Enter withdrawal amount"
                   className="w-full px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all placeholder:text-zinc-400"
                 />
-                {withdrawAmount && Number(withdrawAmount) > totalEarned && (
+                {withdrawAmount && Number(withdrawAmount) > availableBalance && (
                   <p className="text-[11px] text-red-400 mt-1">Amount exceeds available balance</p>
                 )}
               </div>
@@ -1821,6 +2242,10 @@ export default function DashboardScreen() {
                   setWithdrawing(true);
                   await new Promise((r) => setTimeout(r, 2500));
                   setWithdrawing(false);
+                  // Deduct from withdrawn total
+                  const newWithdrawnTotal = withdrawnTotal + wAmt;
+                  setWithdrawnTotal(newWithdrawnTotal);
+                  localStorage.setItem('btc-wallet-withdrawn', JSON.stringify(newWithdrawnTotal));
                   // Record withdrawal transaction
                   const tx = { id: Date.now(), type: 'withdraw', amount: wAmt, date: new Date().toLocaleString('en-IN'), desc: 'Withdrawal to bank account' };
                   const newTxs = [tx, ...transactions];
@@ -1831,12 +2256,14 @@ export default function DashboardScreen() {
                   const newNotifs = [notif, ...notifications];
                   setNotifications(newNotifs);
                   localStorage.setItem('btc-notifications', JSON.stringify(newNotifs));
+                  // Track to Google Sheet
+                  fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'withdraw', userId: user?.id, userName: user?.name, userEmail: user?.email, userPhone: user?.phone, amount: wAmt, method: 'bank' }) }).catch(() => {});
                   setWithdrawAmount('');
                   setShowWithdraw(false);
                   setWithdrawSuccess(true);
                   setTimeout(() => setWithdrawSuccess(false), 3000);
                 }}
-                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < 500 || Number(withdrawAmount) > totalEarned}
+                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < 500 || Number(withdrawAmount) > availableBalance}
                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {withdrawing ? (
