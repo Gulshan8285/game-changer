@@ -481,3 +481,30 @@ Stage Summary:
 - Full admin approval flow: User submits proof → Admin sees in panel → Approve/Reject → User gets plan automatically
 - Admin sees: Name, Phone, Email, UTR, Plan, Amount, Screenshot filename, Plan details
 - User experience: Submit proof → "Reviewing" status → 30s auto-check → Plan activates with notification
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix Google OAuth redirect_uri_mismatch error
+
+Work Log:
+- Investigated the Google OAuth error - `@react-oauth/google` library uses popup mode which requires domain to be authorized in Google Cloud Console "Authorized JavaScript origins"
+- The sandbox domain (*.space.z.ai) wasn't authorized, causing `redirect_uri_mismatch`
+- Added `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to `.env` for configurable Google Client ID
+- Updated `Providers.tsx` to read Client ID from env variable instead of hardcoded value
+- Rewrote `LoginScreen.tsx` with:
+  - Proper `onError` and `onNonOAuthError` callbacks for `useGoogleLogin`
+  - Google popup monitoring with timeout detection
+  - Help dialog with step-by-step instructions to fix in Google Cloud Console
+  - Shows current domain so user knows what to add
+  - Disabled state when Client ID is not configured
+  - Info button (ℹ) next to Google button for help
+  - Clear error messages with "How to fix?" link
+- Applied same fixes to `SignupScreen.tsx`
+- Ran lint - all clean
+- Dev server started successfully, all routes compiling
+
+Stage Summary:
+- Google OAuth `redirect_uri_mismatch` is a Google Cloud Console configuration issue, not a code bug
+- Added graceful error handling so users see helpful instructions instead of a broken popup
+- Both Login and Signup screens now have a Google Help dialog explaining how to fix
+- Google Client ID moved to `.env` for easy configuration

@@ -7,7 +7,7 @@ import { ThemeProvider } from 'next-themes';
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
-      <GoogleOAuthProvider clientId="743589348670-mpst3nvgpns0pf1fbbso248gbkuv98ie.apps.googleusercontent.com">
+      <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''}>
         {children}
       </GoogleOAuthProvider>
     </ThemeProvider>
