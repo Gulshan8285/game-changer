@@ -1820,7 +1820,7 @@ export default function DashboardScreen() {
                             </div>
                             <span className="text-xs font-medium text-zinc-400">Tap to upload screenshot</span>
                             <span className="text-[10px] text-zinc-600 mt-0.5">JPG, PNG — Max 5MB</span>
-                            <input type="file" accept="image/*" onChange={handleProofFile} className="hidden" />
+                            <input type="file" accept="image/*" capture="environment" onChange={handleProofFile} className="hidden" />
                           </label>
                         )}
                       </div>
