@@ -392,7 +392,9 @@ export default function DashboardScreen() {
   const [cancelPlanId, setCancelPlanId] = useState<number | null>(null);
   const [cancellingPlan, setCancellingPlan] = useState(false);
   // UPI payment states
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'completing' | 'completed' | 'cancelled'>('idle');
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'verifying' | 'completed' | 'failed' | 'cancelled'>('idle');
+  // Cashfree payment link for Basic (5000) plan
+  const CASHFREE_LINK = 'https://payments.cashfree.com/links?code=Ca6b2e5te5r0_AAAAAAAFiO0';
   const [upiId, setUpiId] = useState('gulshanyadav62000-6@okicici');
   const [upiName, setUpiName] = useState('Gulshan Yadav');
   // showWallet/showHistory removed — now using store's dashboardView
@@ -706,86 +708,89 @@ export default function DashboardScreen() {
 
     setInvesting(true);
     const planData = { ...selectedPlan };
-    const amount = planData.investment.toFixed(2);
-    const txnRef = `BTC${Date.now()}`;
-
-    // Store plan data for auto-completion after return
     (window as any).__pendingPlan = planData;
 
-    // Build UPI deep link parameters (standard format)
-    const upiParams = new URLSearchParams({
-      pa: upiId,
-      pn: upiName || 'BitPay Wallet',
-      am: amount,
-      cu: 'INR',
-      tn: `${planData.name} Plan - ₹${planData.investment}`,
-      tr: txnRef,        // Transaction reference (unique per payment)
-      mode: '00',        // Mode: 00 = UPI Collect (non-editable amount)
-    });
-
-    // UPI deep link — opens the default UPI app directly on payment page
-    const upiLink = `upi://pay?${upiParams.toString()}`;
-
-    // Open UPI app directly
     setPaymentStatus('opened');
     setInvesting(false);
 
-    try {
-      window.location.href = upiLink;
-    } catch {
-      // Silent fallback — user can use manual UPI payment shown in the dialog
+    // ── Check if this is Basic (5000) plan → use Cashfree, else use UPI ──
+    const isCashfreePlan = planData.investment === 5000;
+
+    if (isCashfreePlan) {
+      // Cashfree: Open payment link in new tab
+      window.open(CASHFREE_LINK, '_blank');
+    } else {
+      // UPI deep link for other plans
+      const amount = planData.investment.toFixed(2);
+      const txnRef = `BTC${Date.now()}`;
+      const upiParams = new URLSearchParams({
+        pa: upiId,
+        pn: upiName || 'BitPay Wallet',
+        am: amount,
+        cu: 'INR',
+        tn: `${planData.name} Plan - ₹${planData.investment}`,
+        tr: txnRef,
+        mode: '00',
+      });
+      try {
+        window.location.href = `upi://pay?${upiParams.toString()}`;
+      } catch { /* silent */ }
     }
 
     setPaymentStatus('waiting');
 
-    // Auto-detect user returning from UPI app
-    let returnedFromUPI = false;
+    // Detect user returning from payment page
+    let returned = false;
     const handleReturn = () => {
-      if (returnedFromUPI) return;
-      returnedFromUPI = true;
+      if (returned) return;
+      returned = true;
       cleanup();
-
-      // User came back from UPI app → auto-complete payment after 1.5s
-      setPaymentStatus('completing');
-
-      setTimeout(() => {
-        const pendingPlan = (window as any).__pendingPlan;
-        if (pendingPlan) {
-          completeInvestment(pendingPlan);
-          delete (window as any).__pendingPlan;
-        }
-        // Auto-close dialog immediately + show success toast
-        setPaymentStatus('completed');
-        setSelectedPlan(null);
-        setShowInvestPlans(false);
-        setInvestSuccess(true);
-        setTimeout(() => setInvestSuccess(false), 3000);
-      }, 1500);
+      // Ask user to confirm payment (instead of auto-completing)
+      setPaymentStatus('verifying');
     };
 
     document.addEventListener('visibilitychange', handleReturn);
     window.addEventListener('focus', handleReturn);
 
-    // Auto-cancel after 3 minutes if user never returns
     const timeout = setTimeout(() => {
-      if (!returnedFromUPI) {
+      if (!returned) {
         cleanup();
         setPaymentStatus('cancelled');
         delete (window as any).__pendingPlan;
-        setTimeout(() => {
-          setPaymentStatus('idle');
-          setSelectedPlan(null);
-        }, 1500);
+        setTimeout(() => { setPaymentStatus('idle'); setSelectedPlan(null); }, 1500);
       }
-    }, 3 * 60 * 1000);
+    }, 5 * 60 * 1000);
 
     const cleanup = () => {
       document.removeEventListener('visibilitychange', handleReturn);
       window.removeEventListener('focus', handleReturn);
       clearTimeout(timeout);
     };
-
     (window as any).__upiCleanup = cleanup;
+  };
+
+  // ── Confirm payment success (user clicks "Yes, I Paid") ──
+  const confirmPaymentSuccess = () => {
+    const pendingPlan = (window as any).__pendingPlan;
+    if (pendingPlan) {
+      completeInvestment(pendingPlan);
+      delete (window as any).__pendingPlan;
+    }
+    setPaymentStatus('completed');
+    setSelectedPlan(null);
+    setShowInvestPlans(false);
+    setInvestSuccess(true);
+    setTimeout(() => setInvestSuccess(false), 3000);
+  };
+
+  // ── Decline payment (user clicks "No, Payment Failed") ──
+  const confirmPaymentFailed = () => {
+    delete (window as any).__pendingPlan;
+    setPaymentStatus('failed');
+    setTimeout(() => {
+      setPaymentStatus('idle');
+      setSelectedPlan(null);
+    }, 2000);
   };
   // useAppStore() moved to top of component to fix stale closure bug
 
@@ -1621,21 +1626,26 @@ export default function DashboardScreen() {
                     </div>
                   )}
 
-                  {/* STEP 3: Auto-completing (user returned from UPI app) */}
-                  {paymentStatus === 'completing' && (
+                  {/* STEP 3: Verifying — ask user to confirm payment */}
+                  {paymentStatus === 'verifying' && (
                     <div className="text-center py-4">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/20 mb-4">
-                        <CheckCircle2 className="w-8 h-8 text-emerald-400 animate-bounce" />
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/20 mb-4">
+                        <Shield className="w-8 h-8 text-amber-400 animate-pulse" />
                       </div>
-                      <h3 className="text-lg font-bold text-emerald-400">Verifying Payment...</h3>
-                      <p className="text-sm text-zinc-400 mt-2">Please wait</p>
-                      <div className="mt-3 w-full h-1 rounded-full bg-zinc-800 overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full animate-[loading_2s_ease-in-out]" style={{ width: '100%' }} />
+                      <h3 className="text-lg font-bold text-white">Payment Verification</h3>
+                      <p className="text-sm text-zinc-400 mt-2 mb-5">Have you completed the payment?</p>
+                      <div className="space-y-3">
+                        <button onClick={confirmPaymentSuccess} className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold transition-all active:scale-[0.98]">
+                          Yes, I Paid ✓
+                        </button>
+                        <button onClick={confirmPaymentFailed} className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700/50 text-red-400 hover:bg-zinc-700/50 transition-colors font-medium text-sm">
+                          No, Payment Failed
+                        </button>
                       </div>
                     </div>
                   )}
 
-                  {/* STEP 4: Payment completed — auto-closes */}
+                  {/* STEP 4: Payment completed */}
                   {paymentStatus === 'completed' && (
                     <div className="text-center py-4">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/20 mb-4">
@@ -1646,7 +1656,18 @@ export default function DashboardScreen() {
                     </div>
                   )}
 
-                  {/* STEP 5: Payment cancelled — auto-closes */}
+                  {/* STEP 5: Payment failed */}
+                  {paymentStatus === 'failed' && (
+                    <div className="text-center py-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-500/20 mb-4">
+                        <X className="w-8 h-8 text-red-400" />
+                      </div>
+                      <h3 className="text-lg font-bold text-red-400">Payment Failed</h3>
+                      <p className="text-sm text-zinc-400 mt-2">No amount was charged. Please try again.</p>
+                    </div>
+                  )}
+
+                  {/* STEP 6: Payment cancelled — auto-closes */}
                   {paymentStatus === 'cancelled' && (
                     <div className="text-center py-4">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-500/20 mb-4">
