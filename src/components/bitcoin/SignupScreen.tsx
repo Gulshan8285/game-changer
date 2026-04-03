@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useGoogleLogin } from '@react-oauth/google';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,10 +18,9 @@ export default function SignupScreen() {
   const [showGoogleHelp, setShowGoogleHelp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [siteContent, setSiteContent] = useState<Record<string, string>>({});
-  const googleCheckRef = useRef<NodeJS.Timeout | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const popupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
-
-  const hasGoogleClientId = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   // Fetch site content from API
   useEffect(() => {
@@ -85,85 +83,123 @@ export default function SignupScreen() {
     finally { setLoading(false); setAppLoading(false); }
   };
 
-  const monitorGooglePopup = useCallback(() => {
-    if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-    googleCheckRef.current = setInterval(() => {
-      // Monitor popup - if closed without success, clear loading
-      try {
-        const popups = document.querySelectorAll('iframe[title="Sign in with Google"]');
-        // The library uses a hidden iframe for the popup flow
-      } catch { /* cross-origin */ }
-    }, 500);
-    setTimeout(() => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-    }, 120000);
-  }, []);
-
-  const googleSignup = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-      setLoading(true); setAppLoading(true); setGoogleError('');
-      try {
-        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${tokenResponse.access_token}` } });
-        if (!userInfoRes.ok) {
-          setGoogleError('Failed to get Google user info');
-          setShowGoogleHelp(true);
-        } else {
-          const googleUser = await userInfoRes.json();
-          const res = await fetch('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: googleUser.name, email: googleUser.email, avatar: googleUser.picture, isGoogleAuth: true }) });
-          const data = await res.json();
-          if (!res.ok) { setGoogleError(data.error || 'Google signup failed'); }
-          else {
-            fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signup', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
-            processAuthResponse(data);
-          }
-        }
-      } catch {
-        setGoogleError('Google signup failed. Please try again.');
-      } finally { setLoading(false); setAppLoading(false); }
-    },
-    onError: (errorResponse) => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-      setLoading(false); setAppLoading(false);
-      if (errorResponse?.error === 'popup_closed_by_user') {
-        setGoogleError('');
-      } else {
-        setGoogleError('Google sign-up failed. The domain may not be authorized.');
-        setShowGoogleHelp(true);
-      }
-    },
-    onNonOAuthError: (nonOAuthError) => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-      setLoading(false); setAppLoading(false);
-      setGoogleError(`Google sign-in error: ${nonOAuthError?.type || 'Unknown'}. The domain may not be authorized.`);
-      setShowGoogleHelp(true);
-    },
-  });
-
   const handleGoogleSignup = () => {
-    if (!hasGoogleClientId) {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) {
       setGoogleError('Google Client ID not configured. Please use email signup.');
-      setShowGoogleHelp(true);
       return;
     }
+
     setGoogleError('');
     setError('');
     setLoading(true);
     setAppLoading(true);
-    try {
-      googleSignup();
-      monitorGooglePopup();
-    } catch {
+
+    const redirectUri = `${window.location.origin}/api/auth/google-callback`;
+    const scope = 'openid profile email';
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account&access_type=online`;
+
+    const popup = window.open(authUrl, 'google-auth', 'width=550,height=650,left=200,top=100,scrollbars=yes');
+    popupRef.current = popup;
+
+    if (!popup || popup.closed) {
       setLoading(false);
       setAppLoading(false);
-      setGoogleError('Failed to open Google sign-in. Please use email signup.');
-      setShowGoogleHelp(true);
+      setGoogleError('Popup blocked. Please allow popups for this site.');
+      return;
     }
+
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'google-oauth') return;
+
+      window.removeEventListener('message', handleMessage);
+      cleanup();
+
+      if (event.data.error) {
+        setLoading(false);
+        setAppLoading(false);
+        const errDesc = event.data.error_description || event.data.error;
+        if (errDesc.includes('redirect_uri_mismatch') || errDesc.includes('redirect')) {
+          setGoogleError('Domain not authorized in Google Cloud Console. Add your domain to "Authorized JavaScript origins".');
+          setShowGoogleHelp(true);
+        } else {
+          setGoogleError(`Google sign-up failed: ${errDesc}`);
+        }
+        return;
+      }
+
+      const accessToken = event.data.access_token;
+      if (!accessToken) {
+        setLoading(false);
+        setAppLoading(false);
+        setGoogleError('No access token received from Google.');
+        return;
+      }
+
+      try {
+        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!userInfoRes.ok) {
+          setLoading(false);
+          setAppLoading(false);
+          setGoogleError('Failed to get Google user info.');
+          return;
+        }
+        const googleUser = await userInfoRes.json();
+
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: googleUser.name, email: googleUser.email, avatar: googleUser.picture, isGoogleAuth: true }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setGoogleError(data.error || 'Google signup failed');
+        } else {
+          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'signup', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
+          processAuthResponse(data);
+        }
+      } catch {
+        setGoogleError('Google signup failed. Please try again.');
+      } finally {
+        setLoading(false);
+        setAppLoading(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    const checkClosed = setInterval(() => {
+      if (!popupRef.current || popupRef.current.closed) {
+        cleanup();
+        setLoading(false);
+        setAppLoading(false);
+      }
+    }, 1000);
+    popupTimerRef.current = checkClosed;
+
+    const cleanup = () => {
+      window.removeEventListener('message', handleMessage);
+      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
+      popupTimerRef.current = null;
+      if (popupRef.current && !popupRef.current.closed) {
+        try { popupRef.current.close(); } catch {}
+      }
+      popupRef.current = null;
+    };
+
+    setTimeout(() => {
+      cleanup();
+      setLoading(false);
+      setAppLoading(false);
+    }, 180000);
   };
 
   useEffect(() => {
     return () => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
+      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
     };
   }, []);
 
@@ -275,18 +311,10 @@ export default function SignupScreen() {
               </Button>
               <Separator className="bg-zinc-800" />
               <div className="relative">
-                <Button type="button" variant="outline" onClick={handleGoogleSignup} disabled={loading || !hasGoogleClientId} className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 hover:bg-zinc-700/50 hover:text-white py-5 transition-all duration-300">
+                <Button type="button" variant="outline" onClick={handleGoogleSignup} disabled={loading} className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 hover:bg-zinc-700/50 hover:text-white py-5 transition-all duration-300">
                   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" /><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
                   Sign up with Google
                 </Button>
-                {!hasGoogleClientId && (
-                  <p className="text-xs text-zinc-500 text-center mt-2">Google sign-up is not configured</p>
-                )}
-                {hasGoogleClientId && (
-                  <button type="button" onClick={() => setShowGoogleHelp(true)} className="absolute -top-1 -right-1 text-zinc-600 hover:text-zinc-400 transition-colors" title="Google sign-in help">
-                    <Info className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
             </form>
             <div className="mt-6 text-center">
@@ -309,20 +337,19 @@ export default function SignupScreen() {
                 </button>
               </div>
               <div className="space-y-3 text-sm text-zinc-300">
-                <p>If Google sign-in shows <span className="text-amber-400 font-medium">&quot;redirect_uri_mismatch&quot;</span> error, follow these steps:</p>
+                <p>If Google sign-up shows <span className="text-amber-400 font-medium">&quot;redirect_uri_mismatch&quot;</span> error:</p>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
-                  <li>Go to <span className="text-amber-400">Google Cloud Console</span></li>
+                  <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline hover:text-amber-300">Google Cloud Console</a></li>
                   <li>Select your project</li>
                   <li>Go to <span className="text-amber-400">APIs & Services → Credentials</span></li>
-                  <li>Click your <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
-                  <li>Under <span className="text-amber-400">&quot;Authorized JavaScript origins&quot;</span>, add your current domain</li>
-                  <li>Save changes</li>
+                  <li>Click <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
+                  <li>In <span className="text-amber-400">&quot;Authorized JavaScript origins&quot;</span>, add:</li>
                 </ol>
-                <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700 mt-3">
-                  <p className="text-xs text-zinc-400 font-medium mb-1">Current domain:</p>
-                  <p className="text-xs text-amber-400 break-all font-mono">{typeof window !== 'undefined' ? window.location.origin : 'unknown'}</p>
+                <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                  <p className="text-xs text-zinc-400 font-medium mb-1">Add this URL:</p>
+                  <p className="text-xs text-amber-400 break-all font-mono select-all">{typeof window !== 'undefined' ? window.location.origin : 'your-website-domain'}</p>
                 </div>
-                <p className="text-zinc-500 text-xs">💡 Tip: You can always use <span className="text-zinc-400">Email/Phone signup</span> as an alternative.</p>
+                <p className="text-zinc-500 text-xs">💡 You can also use <span className="text-zinc-400">Email/Phone signup</span> anytime.</p>
               </div>
               <Button onClick={() => setShowGoogleHelp(false)} className="w-full mt-5 bg-zinc-800 hover:bg-zinc-700 text-white">
                 Got it

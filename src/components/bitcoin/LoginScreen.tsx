@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useGoogleLogin } from '@react-oauth/google';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,15 +14,13 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [googleError, setGoogleError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [showGoogleHelp, setShowGoogleHelp] = useState(false);
   const [siteContent, setSiteContent] = useState<Record<string, string>>({});
-  const googlePopupRef = useRef<Window | null>(null);
-  const googleCheckRef = useRef<NodeJS.Timeout | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const popupTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
-
-  const hasGoogleClientId = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   // Fetch site content from API
   useEffect(() => {
@@ -82,124 +79,137 @@ export default function LoginScreen() {
     finally { setLoading(false); setAppLoading(false); }
   };
 
-  const monitorGooglePopup = useCallback(() => {
-    // Monitor the popup to detect Google errors (like redirect_uri_mismatch)
-    if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-
-    googleCheckRef.current = setInterval(() => {
-      if (googlePopupRef.current) {
-        try {
-          // If popup is closed by user or by Google error
-          if (googlePopupRef.current.closed) {
-            if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-            googlePopupRef.current = null;
-            setLoading(false);
-            setAppLoading(false);
-            // Note: if Google login succeeds, onSuccess handles it.
-            // If it fails, onError handles it. But for redirect_uri_mismatch,
-            // the popup shows an error page and user closes it - onError might not fire.
-          }
-        } catch {
-          // Cross-origin access error is expected - popup is still open on Google's domain
-        }
-      }
-    }, 500);
-
-    // Auto-cleanup after 120 seconds
-    setTimeout(() => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-      if (googlePopupRef.current && !googlePopupRef.current.closed) {
-        googlePopupRef.current.close();
-        googlePopupRef.current = null;
-        setLoading(false);
-        setAppLoading(false);
-      }
-    }, 120000);
-  }, [setAppLoading]);
-
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-      setLoading(true);
-      setAppLoading(true);
-      setGoogleError('');
-      try {
-        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-        });
-        if (!userInfoRes.ok) {
-          setGoogleError('Failed to get Google user info');
-          setShowGoogleHelp(true);
-        } else {
-          const googleUser = await userInfoRes.json();
-          const res = await fetch('/api/auth/google', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: googleUser.name, email: googleUser.email, avatar: googleUser.picture, isGoogleAuth: true }),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            setGoogleError(data.error || 'Google login failed');
-          } else {
-            fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
-            processAuthResponse(data);
-          }
-        }
-      } catch {
-        setGoogleError('Google login failed. Please try again.');
-      } finally { setLoading(false); setAppLoading(false); }
-    },
-    onError: (errorResponse) => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-      googlePopupRef.current = null;
-      setLoading(false);
-      setAppLoading(false);
-      // Google OAuth errors - show helpful message
-      if (errorResponse?.error === 'popup_closed_by_user') {
-        setGoogleError('');
-        // User cancelled - no error needed
-      } else {
-        setGoogleError('Google sign-in failed. This usually means the domain is not configured in Google Cloud Console.');
-        setShowGoogleHelp(true);
-      }
-    },
-    onNonOAuthError: (nonOAuthError) => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
-      googlePopupRef.current = null;
-      setLoading(false);
-      setAppLoading(false);
-      setGoogleError(`Google sign-in error: ${nonOAuthError?.type || 'Unknown error'}. The domain may not be authorized.`);
-      setShowGoogleHelp(true);
-    },
-  });
-
   const handleGoogleLogin = () => {
-    if (!hasGoogleClientId) {
-      setGoogleError('Google Client ID not configured. Please contact admin or use email/phone login.');
-      setShowGoogleHelp(true);
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      setGoogleError('Google Client ID not configured. Please use email/phone login.');
       return;
     }
+
     setGoogleError('');
     setError('');
     setLoading(true);
     setAppLoading(true);
-    try {
-      googleLogin();
-      // The useGoogleLogin hook opens a popup automatically
-      // Start monitoring it
-      monitorGooglePopup();
-    } catch {
+
+    const redirectUri = `${window.location.origin}/api/auth/google-callback`;
+    const scope = 'openid profile email';
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=select_account&access_type=online`;
+
+    // Open Google auth in popup
+    const popup = window.open(authUrl, 'google-auth', 'width=550,height=650,left=200,top=100,scrollbars=yes');
+    popupRef.current = popup;
+
+    if (!popup || popup.closed) {
       setLoading(false);
       setAppLoading(false);
-      setGoogleError('Failed to open Google sign-in. Please try email/phone login.');
-      setShowGoogleHelp(true);
+      setGoogleError('Popup blocked. Please allow popups for this site.');
+      return;
     }
+
+    // Listen for postMessage from callback page
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'google-oauth') return;
+
+      // Clean up listener
+      window.removeEventListener('message', handleMessage);
+      cleanup();
+
+      if (event.data.error) {
+        setLoading(false);
+        setAppLoading(false);
+        const errDesc = event.data.error_description || event.data.error;
+        if (errDesc.includes('redirect_uri_mismatch') || errDesc.includes('redirect')) {
+          setGoogleError('Domain not authorized in Google Cloud Console. Add your domain to "Authorized JavaScript origins".');
+          setShowGoogleHelp(true);
+        } else {
+          setGoogleError(`Google sign-in failed: ${errDesc}`);
+        }
+        return;
+      }
+
+      const accessToken = event.data.access_token;
+      if (!accessToken) {
+        setLoading(false);
+        setAppLoading(false);
+        setGoogleError('No access token received from Google.');
+        return;
+      }
+
+      // Got token — get user info from Google
+      try {
+        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!userInfoRes.ok) {
+          setLoading(false);
+          setAppLoading(false);
+          setGoogleError('Failed to get Google user info.');
+          return;
+        }
+        const googleUser = await userInfoRes.json();
+
+        // Call our backend API to login/signup
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: googleUser.name,
+            email: googleUser.email,
+            avatar: googleUser.picture,
+            isGoogleAuth: true,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setGoogleError(data.error || 'Google login failed');
+        } else {
+          fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', userId: data.user?.id, userName: googleUser.name, userEmail: googleUser.email, method: 'google' }) }).catch(() => {});
+          processAuthResponse(data);
+        }
+      } catch {
+        setGoogleError('Google login failed. Please try again.');
+      } finally {
+        setLoading(false);
+        setAppLoading(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    // Monitor popup — if user closes it manually, clean up
+    const checkClosed = setInterval(() => {
+      if (!popupRef.current || popupRef.current.closed) {
+        cleanup();
+        setLoading(false);
+        setAppLoading(false);
+      }
+    }, 1000);
+    popupTimerRef.current = checkClosed;
+
+    const cleanup = () => {
+      window.removeEventListener('message', handleMessage);
+      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
+      popupTimerRef.current = null;
+      if (popupRef.current && !popupRef.current.closed) {
+        try { popupRef.current.close(); } catch {}
+      }
+      popupRef.current = null;
+    };
+
+    // Auto-cleanup after 3 minutes
+    setTimeout(() => {
+      cleanup();
+      setLoading(false);
+      setAppLoading(false);
+    }, 180000);
   };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (googleCheckRef.current) clearInterval(googleCheckRef.current);
+      if (popupTimerRef.current) clearInterval(popupTimerRef.current);
+      window.removeEventListener('message', () => {});
     };
   }, []);
 
@@ -295,7 +305,7 @@ export default function LoginScreen() {
               </Button>
               <Separator className="bg-zinc-800" />
               <div className="relative">
-                <Button type="button" variant="outline" onClick={handleGoogleLogin} disabled={loading || !hasGoogleClientId} className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 hover:bg-zinc-700/50 hover:text-white py-5 transition-all duration-300">
+                <Button type="button" variant="outline" onClick={handleGoogleLogin} disabled={loading} className="w-full bg-zinc-800/50 border-zinc-700 text-zinc-200 hover:bg-zinc-700/50 hover:text-white py-5 transition-all duration-300">
                   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -304,14 +314,6 @@ export default function LoginScreen() {
                   </svg>
                   Sign in with Google
                 </Button>
-                {!hasGoogleClientId && (
-                  <p className="text-xs text-zinc-500 text-center mt-2">Google sign-in is not configured</p>
-                )}
-                {hasGoogleClientId && (
-                  <button type="button" onClick={() => setShowGoogleHelp(true)} className="absolute -top-1 -right-1 text-zinc-600 hover:text-zinc-400 transition-colors" title="Google sign-in help">
-                    <Info className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
             </form>
             <div className="mt-6 text-center">
@@ -336,20 +338,19 @@ export default function LoginScreen() {
                 </button>
               </div>
               <div className="space-y-3 text-sm text-zinc-300">
-                <p>If Google sign-in shows <span className="text-amber-400 font-medium">&quot;redirect_uri_mismatch&quot;</span> error, follow these steps:</p>
+                <p>If Google sign-in shows <span className="text-amber-400 font-medium">&quot;redirect_uri_mismatch&quot;</span> error:</p>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
-                  <li>Go to <span className="text-amber-400">Google Cloud Console</span></li>
+                  <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline hover:text-amber-300">Google Cloud Console</a></li>
                   <li>Select your project</li>
                   <li>Go to <span className="text-amber-400">APIs & Services → Credentials</span></li>
-                  <li>Click your <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
-                  <li>Under <span className="text-amber-400">&quot;Authorized JavaScript origins&quot;</span>, add your current domain</li>
-                  <li>Save changes</li>
+                  <li>Click <span className="text-amber-400">OAuth 2.0 Client ID</span></li>
+                  <li>In <span className="text-amber-400">&quot;Authorized JavaScript origins&quot;</span>, add:</li>
                 </ol>
-                <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700 mt-3">
-                  <p className="text-xs text-zinc-400 font-medium mb-1">Current domain:</p>
-                  <p className="text-xs text-amber-400 break-all font-mono">{typeof window !== 'undefined' ? window.location.origin : 'unknown'}</p>
+                <div className="p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                  <p className="text-xs text-zinc-400 font-medium mb-1">Add this URL:</p>
+                  <p className="text-xs text-amber-400 break-all font-mono select-all">{typeof window !== 'undefined' ? window.location.origin : 'your-website-domain'}</p>
                 </div>
-                <p className="text-zinc-500 text-xs">💡 Tip: You can always use <span className="text-zinc-400">Email/Phone login</span> as an alternative.</p>
+                <p className="text-zinc-500 text-xs">💡 You can also use <span className="text-zinc-400">Email/Phone login</span> anytime.</p>
               </div>
               <Button onClick={() => setShowGoogleHelp(false)} className="w-full mt-5 bg-zinc-800 hover:bg-zinc-700 text-white">
                 Got it

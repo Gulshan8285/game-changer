@@ -508,3 +508,29 @@ Stage Summary:
 - Added graceful error handling so users see helpful instructions instead of a broken popup
 - Both Login and Signup screens now have a Google Help dialog explaining how to fix
 - Google Client ID moved to `.env` for easy configuration
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix Google OAuth with new Client ID - complete rewrite of Google auth flow
+
+Work Log:
+- Applied new Google Client ID: 743589348670-ckqcsk5p8c1int5hcekb1s57pr0mkc4r.apps.googleusercontent.com
+- Removed @react-oauth/google dependency from code (removed GoogleOAuthProvider from Providers.tsx)
+- Created /api/auth/google-callback/route.ts - returns HTML page that reads access_token from URL hash and sends it back via postMessage
+- Completely rewrote LoginScreen.tsx Google auth:
+  - Manual popup flow: opens Google auth URL in popup
+  - redirect_uri points to /api/auth/google-callback
+  - Listens for postMessage from callback page
+  - On success: gets user info from Google API, calls /api/auth/google backend
+  - On error: detects redirect_uri_mismatch and shows help dialog
+  - Monitors popup close to reset loading state
+- Applied same manual Google OAuth to SignupScreen.tsx
+- Simplified Providers.tsx (removed GoogleOAuthProvider, only ThemeProvider remains)
+- All lint passes, dev server running clean with no errors
+
+Stage Summary:
+- New Client ID applied: 743589348670-ckqcsk5p8c1int5hcekb1s57pr0mkc4r.apps.googleusercontent.com
+- Google OAuth now uses manual popup + postMessage flow (no @react-oauth/google dependency)
+- Created /api/auth/google-callback route as the redirect target
+- Help dialog shows clickable Google Cloud Console link + current domain to add
+- IMPORTANT: User must add their website domain to Google Cloud Console "Authorized JavaScript origins" for this Client ID
