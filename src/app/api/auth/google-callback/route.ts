@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+function getOrigin(req: NextRequest): string {
+  const forwardedProto = req.headers.get('x-forwarded-proto') || 'https';
+  const forwardedHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost';
+  return `${forwardedProto}://${forwardedHost}`;
+}
+
+function errorRedirect(baseOrigin: string, errorCode: string, errorDesc?: string) {
+  const url = new URL('/', `${baseOrigin}/`);
+  url.searchParams.set('google_error', errorCode);
+  if (errorDesc) url.searchParams.set('google_error_desc', errorDesc);
+  return NextResponse.redirect(url);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -7,31 +20,31 @@ export async function GET(req: NextRequest) {
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
 
+    // Get origin from state param (set by client) or from headers
+    const stateOrigin = searchParams.get('state');
+    const headerOrigin = getOrigin(req);
+    const baseOrigin = stateOrigin ? decodeURIComponent(stateOrigin) : headerOrigin;
+
     // Handle Google auth error
     if (error) {
-      const redirectUrl = new URL('/', req.url);
-      redirectUrl.searchParams.set('google_error', error);
-      if (errorDescription) redirectUrl.searchParams.set('google_error_desc', errorDescription);
-      return NextResponse.redirect(redirectUrl);
+      return errorRedirect(baseOrigin, error, errorDescription || undefined);
     }
 
     if (!code) {
-      const redirectUrl = new URL('/', req.url);
-      redirectUrl.searchParams.set('google_error', 'no_code');
-      return NextResponse.redirect(redirectUrl);
+      return errorRedirect(baseOrigin, 'no_code');
     }
 
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = `${new URL(req.url).origin}/api/auth/google-callback`;
 
     if (!clientId || !clientSecret) {
-      const redirectUrl = new URL('/', req.url);
-      redirectUrl.searchParams.set('google_error', 'missing_config');
-      return NextResponse.redirect(redirectUrl);
+      return errorRedirect(baseOrigin, 'missing_config');
     }
 
-    // Exchange authorization code for access token
+    // The redirect_uri MUST match exactly what was sent in the initial auth URL
+    const redirectUri = `${baseOrigin}/api/auth/google-callback`;
+
+    // Exchange code for access token
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -46,19 +59,16 @@ export async function GET(req: NextRequest) {
 
     if (!tokenRes.ok) {
       const errData = await tokenRes.json().catch(() => ({}));
-      console.error('Google token exchange failed:', errData);
-      const redirectUrl = new URL('/', req.url);
-      redirectUrl.searchParams.set('google_error', 'token_exchange_failed');
-      return NextResponse.redirect(redirectUrl);
+      console.error('Google token exchange failed:', JSON.stringify(errData));
+      console.error('Used redirect_uri:', redirectUri);
+      return errorRedirect(baseOrigin, 'token_exchange_failed');
     }
 
     const tokenData = await tokenRes.json();
     const accessToken = tokenData.access_token;
 
     if (!accessToken) {
-      const redirectUrl = new URL('/', req.url);
-      redirectUrl.searchParams.set('google_error', 'no_access_token');
-      return NextResponse.redirect(redirectUrl);
+      return errorRedirect(baseOrigin, 'no_access_token');
     }
 
     // Get user info from Google
@@ -67,14 +77,12 @@ export async function GET(req: NextRequest) {
     });
 
     if (!userInfoRes.ok) {
-      const redirectUrl = new URL('/', req.url);
-      redirectUrl.searchParams.set('google_error', 'userinfo_failed');
-      return NextResponse.redirect(redirectUrl);
+      return errorRedirect(baseOrigin, 'userinfo_failed');
     }
 
     const googleUser = await userInfoRes.json();
 
-    // Encode user data and redirect to frontend with data in URL
+    // Encode user data and redirect to frontend
     const userData = encodeURIComponent(JSON.stringify({
       name: googleUser.name,
       email: googleUser.email,
@@ -82,13 +90,11 @@ export async function GET(req: NextRequest) {
       isGoogleAuth: true,
     }));
 
-    const redirectUrl = new URL('/', req.url);
+    const redirectUrl = new URL('/', `${baseOrigin}/`);
     redirectUrl.searchParams.set('google_data', userData);
     return NextResponse.redirect(redirectUrl);
   } catch (err) {
     console.error('Google callback error:', err);
-    const redirectUrl = new URL('/', req.url);
-    redirectUrl.searchParams.set('google_error', 'server_error');
-    return NextResponse.redirect(redirectUrl);
+    return NextResponse.redirect('/');
   }
 }

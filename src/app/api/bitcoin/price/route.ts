@@ -7,7 +7,7 @@ const CACHE_DURATION = 30000; // 30 seconds
 
 // Generate realistic simulated Bitcoin historical data
 function generateHistoricalData() {
-  const data = [];
+  const data: Array<{time: number; open: number; high: number; low: number; close: number; volume: number}> = [];
   const now = Date.now();
   let price = 6200000; // ~62,000 USD in INR equivalent starting point
   

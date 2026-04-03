@@ -564,3 +564,44 @@ Stage Summary:
 - User must add redirect URI in Google Cloud Console "Authorized redirect URIs"
 - The redirect URI format: {domain}/api/auth/google-callback
 - @react-oauth/google library no longer used (removed from Providers.tsx)
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix redirect_uri_mismatch — pass origin via state param for exact match
+
+Work Log:
+- Found root cause: Caddy proxy changes the origin, so server-side `new URL(req.url).origin` doesn't match client-side `window.location.origin`
+- Fixed callback route: reads origin from `state` param (set by client) instead of parsing req.url
+- Added `getOrigin()` helper using X-Forwarded-Proto/X-Forwarded-Host headers as fallback
+- Both LoginScreen and SignupScreen now pass `state=encodeURIComponent(window.location.origin)` in Google auth URL
+- Removed `prompt=consent` (was forcing consent screen every time)
+- Cleaned up error handling with `errorRedirect()` helper function
+- Server restarted and running, all routes 200
+
+Stage Summary:
+- Google auth URL now includes `state` param with origin for perfect redirect_uri match
+- Callback route prefers state param over headers for origin detection
+- redirect_uri used in token exchange = exactly what was in the original auth URL
+---
+Task ID: 5
+Agent: Main Agent
+Task: Fix deployment error - disk full + TypeScript errors
+
+Work Log:
+- Ran TypeScript check - found 1 error in src/app/api/bitcoin/price/route.ts (untyped array push)
+- Fixed by adding explicit type annotation to the data array
+- Ran full build test - compiled successfully
+- Discovered deployment error cause: "ENOSPC: no space left on device" - disk was 100% full (0 bytes free)
+- Found /tmp/build_fullstack_* directories eating 1.5GB+ (10+ old build caches)
+- Cleaned all old build caches from /tmp
+- Disk usage dropped from 100% to 16% (7.9GB free)
+- Cleaned .next cache and rebuilt
+- Build output: 162MB, all 30+ routes compile successfully
+- Zero errors, zero warnings in build
+
+Stage Summary:
+- Deployment error was NOT a code issue — it was DISK FULL
+- Cleaned 1.5GB+ of old build caches from /tmp
+- TypeScript error in bitcoin/price route fixed
+- Build: ✓ Compiled successfully
+- Disk: 7.9GB free (16% used)

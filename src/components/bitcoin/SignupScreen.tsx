@@ -140,7 +140,8 @@ export default function SignupScreen() {
     }
     const redirectUri = `${window.location.origin}/api/auth/google-callback`;
     const scope = 'openid profile email';
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent`;
+    const state = encodeURIComponent(window.location.origin);
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&state=${state}`;
     window.location.href = authUrl;
   };
 
