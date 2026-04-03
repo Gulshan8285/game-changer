@@ -105,10 +105,10 @@ export default function ProfileScreen() {
       <main className="relative z-10 px-4 pb-24">
         <div className="max-w-lg mx-auto space-y-4">
           {/* Avatar + Logout */}
-          <Card className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm">
+          <Card className="bg-zinc-900/40 border-zinc-800/30 backdrop-blur-sm">
             <CardContent className="p-6 flex flex-col items-center">
               <div className="relative group">
-                <Avatar className="w-24 h-24 border-4 border-amber-500/30 shadow-lg shadow-amber-500/10">
+                <Avatar className="w-24 h-24 border-2 border-amber-500/20 shadow-lg shadow-amber-500/10">
                   <AvatarImage src={user?.avatar} />
                   <AvatarFallback className="bg-gradient-to-br from-amber-500 to-orange-600 text-white text-2xl font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
                 </Avatar>
@@ -124,7 +124,7 @@ export default function ProfileScreen() {
               {/* Logout Button */}
               <button
                 onClick={() => logout()}
-                className="mt-4 flex items-center gap-2 px-5 py-2 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors text-sm"
+                className="mt-4 flex items-center gap-2 px-5 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-sm"
               >
                 <LogOut className="w-4 h-4" />
                 Log Out
@@ -134,7 +134,7 @@ export default function ProfileScreen() {
 
           {/* Editable Profile Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-xl h-auto p-1 grid grid-cols-4">
+            <TabsList className="w-full bg-zinc-900/40 border border-zinc-800/20 rounded-2xl h-auto p-1 grid grid-cols-4">
               <TabsTrigger value="personal" className="rounded-lg py-2.5 text-xs data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 data-[state=active]:shadow-none text-zinc-500"><User className="w-3.5 h-3.5 mr-1" /><span className="hidden sm:inline">Personal</span></TabsTrigger>
               <TabsTrigger value="bank" className="rounded-lg py-2.5 text-xs data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 data-[state=active]:shadow-none text-zinc-500"><Landmark className="w-3.5 h-3.5 mr-1" /><span className="hidden sm:inline">Bank</span></TabsTrigger>
               <TabsTrigger value="payment" className="rounded-lg py-2.5 text-xs data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 data-[state=active]:shadow-none text-zinc-500"><Wallet className="w-3.5 h-3.5 mr-1" /><span className="hidden sm:inline">UPI</span></TabsTrigger>
@@ -142,7 +142,7 @@ export default function ProfileScreen() {
             </TabsList>
 
             <TabsContent value="personal" className="mt-4">
-              <Card className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
+              <Card className="bg-zinc-900/40 border-zinc-800/20 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
                 {sectionHeader(<User className="w-4 h-4 text-amber-500" />, 'Personal Information')}
                 <Separator className="bg-zinc-800/60" />
                 <div className="space-y-4 pt-2">
@@ -154,7 +154,7 @@ export default function ProfileScreen() {
             </TabsContent>
 
             <TabsContent value="bank" className="mt-4">
-              <Card className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
+              <Card className="bg-zinc-900/40 border-zinc-800/20 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
                 {sectionHeader(<Landmark className="w-4 h-4 text-amber-500" />, 'Bank Account Details')}
                 <Separator className="bg-zinc-800/60" />
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs"><Shield className="w-4 h-4 shrink-0" /><span>Your bank details are encrypted and securely stored</span></div>
@@ -168,7 +168,7 @@ export default function ProfileScreen() {
             </TabsContent>
 
             <TabsContent value="payment" className="mt-4">
-              <Card className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
+              <Card className="bg-zinc-900/40 border-zinc-800/20 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
                 {sectionHeader(<Wallet className="w-4 h-4 text-amber-500" />, 'UPI Payment')}
                 <Separator className="bg-zinc-800/60" />
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs"><Wallet className="w-4 h-4 shrink-0" /><span>Add your UPI ID for instant Bitcoin transactions</span></div>
@@ -187,7 +187,7 @@ export default function ProfileScreen() {
             </TabsContent>
 
             <TabsContent value="address" className="mt-4">
-              <Card className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
+              <Card className="bg-zinc-900/40 border-zinc-800/20 backdrop-blur-sm"><CardContent className="p-5 space-y-4">
                 {sectionHeader(<MapPin className="w-4 h-4 text-amber-500" />, 'Address Details')}
                 <Separator className="bg-zinc-800/60" />
                 <div className="space-y-4 pt-2">
@@ -207,7 +207,7 @@ export default function ProfileScreen() {
           </Button>
 
           {/* Share & Invite Section */}
-          <Card className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm overflow-hidden">
+          <Card className="bg-zinc-900/40 border-zinc-800/20 backdrop-blur-sm overflow-hidden">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Share2 className="w-4 h-4 text-amber-500" />
@@ -315,7 +315,7 @@ export default function ProfileScreen() {
           </Card>
 
           {/* Pages & Policies - BOTTOM */}
-          <Card className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm">
+          <Card className="bg-zinc-900/40 border-zinc-800/20 backdrop-blur-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3"><FileText className="w-4 h-4 text-amber-500" /><span className="text-sm font-medium text-white">Pages & Policies</span></div>
               <div className="space-y-1">

@@ -605,3 +605,25 @@ Stage Summary:
 - TypeScript error in bitcoin/price route fixed
 - Build: ✓ Compiled successfully
 - Disk: 7.9GB free (16% used)
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix Google login "not configured" error + Profile page border cleanup
+
+Work Log:
+- Found root cause: `.env` file was missing `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (these were lost, likely from deployment reset)
+- Added back both Google credentials to `.env`:
+  - `NEXT_PUBLIC_GOOGLE_CLIENT_ID=743589348670-ckqcsk5p8c1int5hcekb1s57pr0mkc4r.apps.googleusercontent.com`
+  - `GOOGLE_CLIENT_SECRET=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`
+- Dev server auto-detected env reload ("Reload env: .env" in logs)
+- Fixed ProfileScreen.tsx borders — changed all Card borders from harsh `border-zinc-800/60` to subtle `border-zinc-800/20`/`border-zinc-800/30`
+- Softened avatar border from `border-4 border-amber-500/30` to `border-2 border-amber-500/20`
+- Changed logout button from `border border-red-500/30` to `bg-red-500/10` (no border, just background)
+- TabsList border changed from `border-zinc-800/60` to `border-zinc-800/20` with `rounded-2xl`
+- Lint passes: 0 errors, dev server compiling clean
+
+Stage Summary:
+- Google login will now work (credentials restored in .env)
+- Profile page borders are now subtle/clean matching the floating pill aesthetic
+- All 7 Card components + TabsList + Avatar + Logout button updated
