@@ -35,19 +35,17 @@ export async function DELETE(request: NextRequest) {
 
     const safeId = userId.replace(/'/g, "''")
 
-    // Delete all user-related data in correct order (FK constraints)
+    // Reset user data — delete their proofs, requests, withdrawals
+    // User account stays so they can login again
     await rawQuery(`DELETE FROM PaymentProof WHERE userId = '${safeId}'`)
     await rawQuery(`DELETE FROM PaymentRequest WHERE userId = '${safeId}'`)
     await rawQuery(`DELETE FROM WithdrawalRequest WHERE userId = '${safeId}'`)
 
-    // Delete the user
-    const result = await rawQuery(`DELETE FROM User WHERE id = '${safeId}'`)
-
-    return NextResponse.json({ success: true, message: 'User deleted successfully' })
+    return NextResponse.json({ success: true, message: 'User data reset successfully' })
   } catch (error: any) {
-    console.error('Delete user error:', error)
+    console.error('Reset user error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to delete user: ' + (error?.message || 'Unknown error') },
+      { success: false, error: 'Failed to reset user: ' + (error?.message || 'Unknown error') },
       { status: 500 }
     )
   }

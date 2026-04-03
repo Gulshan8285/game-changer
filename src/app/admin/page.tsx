@@ -625,7 +625,8 @@ interface UsersTabProps {
 }
 
 const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUserSearch, handleDeleteUser }: UsersTabProps) {
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [resetting, setResetting] = useState(false);
   const filteredUsers = users.filter(
     (u) =>
       !userSearch ||
@@ -692,27 +693,13 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
                       <TableCell className="text-zinc-400 text-sm">{u.phone || '—'}</TableCell>
                       <TableCell className="text-zinc-500 text-xs">{formatDateShort(u.createdAt)}</TableCell>
                       <TableCell className="text-right">
-                        <AlertDialog open={deleteTarget?.id === u.id} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-                          <AlertDialogTrigger asChild>
-                            <button className="p-2 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors">
-                              <Trash2 className="size-4" />
-                            </button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="bg-zinc-900 border-zinc-800">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="text-white">Delete User</AlertDialogTitle>
-                              <AlertDialogDescription className="text-zinc-400">
-                                Are you sure you want to delete <span className="text-white font-semibold">{u.name}</span>? This will permanently remove the user and all their payment proofs. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700">Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteUser(u.id, u.name)} className="bg-red-600 hover:bg-red-700 text-white">
-                                Delete User
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <button
+                          onClick={() => setResetTarget({ id: u.id, name: u.name })}
+                          className="p-2 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          title="Reset User Data"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -722,6 +709,51 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
           )}
         </CardContent>
       </Card>
+
+      {/* Reset User Confirmation Dialog */}
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !resetting && setResetTarget(null)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white">Reset User Data</h3>
+            </div>
+            <p className="text-zinc-400 text-sm mb-2">
+              Kya aap <span className="text-white font-semibold">{resetTarget.name}</span> ka data reset karna chahte hain?
+            </p>
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-4">
+              <p className="text-amber-400 text-xs">⚠️ User ke investments, transactions, payment proofs sab delete ho jayenge. User ka account <span className="font-semibold">nahi delete</span> hoga — wo phir se login kar sakta hai.</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setResetTarget(null)}
+                disabled={resetting}
+                className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setResetting(true);
+                  await handleDeleteUser(resetTarget.id, resetTarget.name);
+                  setResetting(false);
+                  setResetTarget(null);
+                }}
+                disabled={resetting}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {resetting ? (
+                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Resetting...</>
+                ) : (
+                  'Reset Data'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
@@ -981,11 +1013,11 @@ export default function AdminPage() {
       const res = await fetch(`/api/admin/users?id=${userId}`, { method: 'DELETE', headers: headers() });
       const data = await res.json();
       if (data.success) {
-        toast.success(`User "${userName}" deleted!`);
+        toast.success(`"${userName}" ka data reset ho gaya! User phir login kar sakta hai.`);
         fetchUsers();
-      } else toast.error(data.error || 'Failed to delete user');
+      } else toast.error(data.error || 'Reset failed');
     } catch {
-      toast.error('Delete failed');
+      toast.error('Reset failed');
     }
   };
 
