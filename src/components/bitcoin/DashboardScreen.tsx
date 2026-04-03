@@ -797,26 +797,9 @@ export default function DashboardScreen() {
       tr: txnRef,
       mode: '00',
     });
-    // ── Android Intent URL (shows UPI app chooser — Google Pay, PhonePe, Paytm, etc.) ──
-    const intentUrl = `intent://pay?${upiParams.toString()}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;S.browser_fallback_url=${encodeURIComponent(window.location.href)};end`;
-    const standardUpiUrl = `upi://pay?${upiParams.toString()}`;
-
     try {
-      // Try Android Intent first (works on Android Chrome — shows app chooser with GPay)
-      const link = document.createElement('a');
-      link.href = intentUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      // Fallback: if intent doesn't work after 600ms, try standard UPI
-      setTimeout(() => {
-        try { window.location.href = standardUpiUrl; } catch { /* silent */ }
-      }, 600);
-    } catch {
-      // Final fallback: standard UPI deep link
-      try { window.location.href = standardUpiUrl; } catch { /* silent */ }
-    }
+      window.location.href = `upi://pay?${upiParams.toString()}`;
+    } catch { /* silent */ }
 
     setPaymentStatus('waiting');
 
