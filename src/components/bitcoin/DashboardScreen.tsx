@@ -2571,24 +2571,26 @@ export default function DashboardScreen() {
       )}
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl">
-        <div className="max-w-lg mx-auto flex items-center justify-around py-2 px-4">
-          <button onClick={() => setDashboardView('dashboard')} className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${dashboardView === 'dashboard' ? 'text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
-            <BarChart3 className="w-5 h-5" />
-            <span className="text-xs font-medium">Home</span>
-          </button>
-          <button onClick={() => setDashboardView('history')} className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${dashboardView === 'history' ? 'text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
-            <History className="w-5 h-5" />
-            <span className="text-xs">History</span>
-          </button>
-          <button onClick={() => setDashboardView('wallet')} className={`flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-colors ${dashboardView === 'wallet' ? 'text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
-            <Wallet className="w-5 h-5" />
-            <span className="text-xs">Wallet</span>
-          </button>
-          <button onClick={() => setScreen('profile')} className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-            <User className="w-5 h-5" />
-            <span className="text-xs">Profile</span>
-          </button>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+        <div className="max-w-sm mx-auto px-4 pb-2 pointer-events-auto">
+          <div className="flex items-center justify-between rounded-2xl bg-white/90 dark:bg-zinc-800/90 backdrop-blur-xl border border-zinc-200/50 dark:border-zinc-700/40 px-2 py-1.5 shadow-lg shadow-black/5 dark:shadow-black/20">
+            <button onClick={() => setDashboardView('dashboard')} className={`flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-all duration-200 ${dashboardView === 'dashboard' ? 'bg-amber-500/15 text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
+              <BarChart3 className={`w-5 h-5 ${dashboardView === 'dashboard' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+              <span className={`text-[10px] ${dashboardView === 'dashboard' ? 'font-semibold' : 'font-medium'}`}>Home</span>
+            </button>
+            <button onClick={() => setDashboardView('history')} className={`flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-all duration-200 ${dashboardView === 'history' ? 'bg-amber-500/15 text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
+              <History className={`w-5 h-5 ${dashboardView === 'history' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+              <span className={`text-[10px] ${dashboardView === 'history' ? 'font-semibold' : 'font-medium'}`}>History</span>
+            </button>
+            <button onClick={() => setDashboardView('wallet')} className={`flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl transition-all duration-200 ${dashboardView === 'wallet' ? 'bg-amber-500/15 text-amber-500' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}>
+              <Wallet className={`w-5 h-5 ${dashboardView === 'wallet' ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+              <span className={`text-[10px] ${dashboardView === 'wallet' ? 'font-semibold' : 'font-medium'}`}>Wallet</span>
+            </button>
+            <button onClick={() => setScreen('profile')} className="flex flex-col items-center gap-0.5 py-1.5 px-3 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-all duration-200">
+              <User className="w-5 h-5 stroke-[1.5]" />
+              <span className="text-[10px] font-medium">Profile</span>
+            </button>
+          </div>
         </div>
       </nav>
     </div>
