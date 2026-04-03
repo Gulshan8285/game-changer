@@ -412,3 +412,26 @@ Stage Summary:
 - No runtime errors
 - All 10 optimizations applied successfully
 - Key files modified: DashboardScreen.tsx, layout.tsx
+---
+Task ID: 1
+Agent: Main Agent
+Task: Update payment verification flow with UTR number + screenshot auto-send to WhatsApp
+
+Work Log:
+- Read DashboardScreen.tsx and useAppStore.ts to understand existing payment flow
+- Added `utrNumber` state variable to component
+- Replaced phone number field with UTR number input in upload form
+- Updated `submitPaymentProof` to send UTR to API and auto-open WhatsApp
+- Implemented dual WhatsApp strategy: Web Share API (mobile - can attach file) + wa.me link fallback (desktop)
+- Updated payment-proof API to accept and validate UTR number
+- Updated Google Sheets tracking data to include UTR
+- Added "Admin will receive" summary showing user name, phone, email, plan details
+- Updated reviewing step to clearly show what admin received
+- WhatsApp message includes: Name, Phone, Email, Plan, Amount, UTR, Timestamp
+
+Stage Summary:
+- Complete payment verification flow: Yes I Paid → UTR input + Screenshot upload → Auto-send to WhatsApp 8810381949 → Review status
+- Admin gets all info needed: user name, email, phone, plan name, amount, UTR number, screenshot
+- Mobile users get Web Share dialog (can attach screenshot directly to WhatsApp)
+- Desktop users get wa.me link with pre-filled text
+- Payment proof API saves files with UTR in filename for easy identification
