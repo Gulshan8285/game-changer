@@ -181,7 +181,7 @@ export default function LoginScreen() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25 mb-4">
             <Bitcoin className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">{siteContent.app_name || 'BitPay Wallet'}</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">{siteContent.app_name || 'Dhan Kamao'}</h1>
           <p className="text-zinc-400 mt-1">{siteContent.app_subtitle || 'Your gateway to Bitcoin in India'}</p>
         </div>
 

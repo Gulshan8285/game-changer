@@ -209,7 +209,7 @@ const CONTENT_SECTIONS = [
     title: 'General Settings',
     description: 'Main app title, subtitle & support info',
     keys: [
-      { key: 'hero_title', label: 'Hero Title', type: 'input' as const, placeholder: 'BitPay Wallet' },
+      { key: 'hero_title', label: 'Hero Title', type: 'input' as const, placeholder: 'Dhan Kamao' },
       { key: 'hero_subtitle', label: 'Hero Subtitle', type: 'textarea' as const, placeholder: 'India\'s Trusted Bitcoin Platform' },
       { key: 'support_email', label: 'Support Email', type: 'input' as const, placeholder: 'support@bitpaywallet.in' },
       { key: 'support_whatsapp', label: 'Support WhatsApp', type: 'input' as const, placeholder: '+91 9876543210' },
@@ -240,7 +240,7 @@ const CONTENT_SECTIONS = [
       { key: 'contact_email_sub', label: 'Email Subtitle', type: 'input' as const, placeholder: 'Reply within 24 hours' },
       { key: 'contact_phone', label: 'Phone Number', type: 'input' as const, placeholder: '+91 22-4000-5000' },
       { key: 'contact_phone_sub', label: 'Phone Subtitle', type: 'input' as const, placeholder: 'Mon-Sat, 9 AM - 8 PM IST' },
-      { key: 'contact_address', label: 'Company Name', type: 'input' as const, placeholder: 'BitPay Wallet Pvt. Ltd.' },
+      { key: 'contact_address', label: 'Company Name', type: 'input' as const, placeholder: 'Dhan Kamao Pvt. Ltd.' },
       { key: 'address_detail', label: 'Full Address', type: 'input' as const, placeholder: 'BKC, Mumbai 400051, Maharashtra' },
       { key: 'contact_hours', label: 'Support Hours', type: 'input' as const, placeholder: '24/7 Live Chat' },
       { key: 'contact_hours_sub', label: 'Hours Subtitle', type: 'input' as const, placeholder: 'Email: 24 hours' },
@@ -271,7 +271,7 @@ const CONTENT_SECTIONS = [
     title: 'App Branding & Login',
     description: 'App name, login screen text & security info',
     keys: [
-      { key: 'app_name', label: 'App Name', type: 'input' as const, placeholder: 'BitPay Wallet' },
+      { key: 'app_name', label: 'App Name', type: 'input' as const, placeholder: 'Dhan Kamao' },
       { key: 'app_subtitle', label: 'App Subtitle', type: 'input' as const, placeholder: 'Your gateway to Bitcoin in India' },
       { key: 'login_security_text', label: 'Login Security Badge Text', type: 'input' as const, placeholder: 'Secured with 256-bit encryption' },
       { key: 'signup_title', label: 'Signup Page Title', type: 'input' as const, placeholder: 'Create Account' },

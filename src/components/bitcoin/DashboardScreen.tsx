@@ -790,7 +790,7 @@ export default function DashboardScreen() {
     const txnRef = `BTC${Date.now()}`;
     const upiParams = new URLSearchParams({
       pa: upiId,
-      pn: upiName || 'BitPay Wallet',
+      pn: upiName || 'Dhan Kamao',
       am: amount,
       cu: 'INR',
       tn: `${planData.name} Plan - ₹${planData.investment}`,

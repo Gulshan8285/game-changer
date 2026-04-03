@@ -15,15 +15,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BitPay Wallet - Bitcoin in India",
+  title: "Dhan Kamao - Bitcoin in India",
   description: "Your gateway to Bitcoin in India. Track prices in INR, manage your portfolio, and trade securely.",
   keywords: ["Bitcoin", "BTC", "India", "Crypto Wallet", "INR", "Bitcoin Price"],
-  authors: [{ name: "BitPay Wallet" }],
+  authors: [{ name: "Dhan Kamao" }],
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>₿</text></svg>",
   },
   openGraph: {
-    title: "BitPay Wallet",
+    title: "Dhan Kamao",
     description: "Bitcoin Wallet for India - Track, Trade & Earn",
     type: "website",
   },

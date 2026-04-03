@@ -10,8 +10,8 @@ const SECTIONS = [
     icon: <AlertCircle className="w-5 h-5 text-amber-500" />,
     title: '1. Overview',
     content: [
-      'At BitPay Wallet, we strive to provide the best cryptocurrency experience. However, we understand that sometimes things may not go as expected. This Refund Policy outlines the circumstances under which refunds may be issued and the process for requesting one.',
-      'This policy applies to all fee-based services, subscription charges, and transaction fees on the BitPay Wallet platform. It does NOT apply to market fluctuations in Bitcoin prices, as cryptocurrency values are determined by the open market.',
+      'At Dhan Kamao, we strive to provide the best cryptocurrency experience. However, we understand that sometimes things may not go as expected. This Refund Policy outlines the circumstances under which refunds may be issued and the process for requesting one.',
+      'This policy applies to all fee-based services, subscription charges, and transaction fees on the Dhan Kamao platform. It does NOT apply to market fluctuations in Bitcoin prices, as cryptocurrency values are determined by the open market.',
     ]
   },
   {
@@ -20,7 +20,7 @@ const SECTIONS = [
     content: [
       'Trading Fees: If a transaction fails due to a technical error on our platform, the trading fees will be fully refunded within 3-5 business days.',
       'Subscription Services: Premium features and subscription charges are eligible for a full refund within 7 days of purchase if you are not satisfied with the service.',
-      'Deposit Fees: If a deposit to your BitPay Wallet fails or is delayed beyond 48 hours due to our system error, the deposit fee will be refunded along with the deposited amount.',
+      'Deposit Fees: If a deposit to your Dhan Kamao fails or is delayed beyond 48 hours due to our system error, the deposit fee will be refunded along with the deposited amount.',
       'Promotional Charges: Any amount charged during promotional periods that were incorrectly billed will be fully refunded.',
     ]
   },
@@ -31,7 +31,7 @@ const SECTIONS = [
       'Bitcoin Price Fluctuations: Losses due to Bitcoin price changes are NOT refundable. Cryptocurrency is a volatile asset, and its value can change rapidly. Users assume all market risk.',
       'Successful Transactions: Once a Bitcoin buy/sell transaction is confirmed on the blockchain, it cannot be reversed or refunded.',
       'Account Inactivity: No refunds are issued for subscription charges after the 7-day refund window has expired.',
-      'Third-Party Fees: Bank charges, UPI fees, or network gas fees imposed by third parties are not refundable by BitPay Wallet.',
+      'Third-Party Fees: Bank charges, UPI fees, or network gas fees imposed by third parties are not refundable by Dhan Kamao.',
       'Security Breaches: If a loss occurs due to the user sharing their password, private keys, or 2FA codes, no refund will be issued.',
     ]
   },
@@ -49,7 +49,7 @@ const SECTIONS = [
     icon: <HelpCircle className="w-5 h-5 text-amber-500" />,
     title: '5. How to Request a Refund',
     content: [
-      'Step 1: Log in to your BitPay Wallet account.',
+      'Step 1: Log in to your Dhan Kamao account.',
       'Step 2: Go to Profile > Settings > Request Refund.',
       'Step 3: Select the transaction or charge you want a refund for.',
       'Step 4: Provide a reason for the refund request and attach any supporting documents.',
@@ -74,16 +74,16 @@ const SECTIONS = [
       'If your refund request is denied and you believe it was unjustified, you can file an appeal within 15 days of the denial by emailing disputes@bitpaywallet.in.',
       'All disputes will be reviewed by a senior team member within 5 business days.',
       'If the dispute remains unresolved, you may escalate the matter to the relevant consumer protection authority in India.',
-      'BitPay Wallet is committed to fair resolution and will always consider legitimate claims with utmost care.',
+      'Dhan Kamao is committed to fair resolution and will always consider legitimate claims with utmost care.',
     ]
   },
   {
     icon: <Bitcoin className="w-5 h-5 text-amber-500" />,
     title: '8. Important Disclaimer',
     content: [
-      'Bitcoin and other cryptocurrencies are highly volatile digital assets. The value of your holdings can decrease significantly. BitPay Wallet is a platform for buying, selling, and managing Bitcoin — we do NOT guarantee any returns or profits.',
-      'Invest only what you can afford to lose. BitPay Wallet is not a financial advisor. Please consult a qualified financial advisor before making investment decisions.',
-      'By using BitPay Wallet, you acknowledge and accept the risks associated with cryptocurrency investments.',
+      'Bitcoin and other cryptocurrencies are highly volatile digital assets. The value of your holdings can decrease significantly. Dhan Kamao is a platform for buying, selling, and managing Bitcoin — we do NOT guarantee any returns or profits.',
+      'Invest only what you can afford to lose. Dhan Kamao is not a financial advisor. Please consult a qualified financial advisor before making investment decisions.',
+      'By using Dhan Kamao, you acknowledge and accept the risks associated with cryptocurrency investments.',
     ]
   },
 ];

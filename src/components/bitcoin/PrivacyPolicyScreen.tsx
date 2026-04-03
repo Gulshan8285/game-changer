@@ -21,7 +21,7 @@ const SECTIONS = [
     icon: <Database className="w-5 h-5 text-amber-500" />,
     title: '2. How We Use Your Information',
     content: [
-      'To provide, maintain, and improve BitPay Wallet services including Bitcoin trading, portfolio management, and price tracking.',
+      'To provide, maintain, and improve Dhan Kamao services including Bitcoin trading, portfolio management, and price tracking.',
       'To process your transactions securely and maintain accurate records.',
       'To verify your identity and prevent fraud, money laundering, and unauthorized access.',
       'To send you important notifications about your account, transactions, and security alerts.',
@@ -49,7 +49,7 @@ const SECTIONS = [
     content: [
       'We do NOT sell, rent, or trade your personal information to third parties for marketing purposes.',
       'We may share your data with: Payment processors (for UPI/bank transactions), Government authorities (when legally required), Law enforcement (with valid court orders), Service providers who assist in operating our platform (bound by strict data processing agreements).',
-      'If BitPay Wallet is involved in a merger, acquisition, or asset sale, your personal data may be transferred to the acquiring entity with continued protection under this policy.',
+      'If Dhan Kamao is involved in a merger, acquisition, or asset sale, your personal data may be transferred to the acquiring entity with continued protection under this policy.',
     ]
   },
   {
@@ -88,7 +88,7 @@ const SECTIONS = [
     icon: <Lock className="w-5 h-5 text-amber-500" />,
     title: '8. Children\'s Privacy',
     content: [
-      'BitPay Wallet is not intended for use by individuals under 18 years of age.',
+      'Dhan Kamao is not intended for use by individuals under 18 years of age.',
       'We do not knowingly collect personal information from children. If we discover that a child under 18 has provided us with personal data, we will delete it promptly.',
     ]
   },
@@ -98,7 +98,7 @@ const SECTIONS = [
     content: [
       'We may update this Privacy Policy from time to time. Material changes will be notified via email or in-app notification at least 15 days before taking effect.',
       'The updated policy will be posted on this page with the revised "Last Updated" date.',
-      'Continued use of BitPay Wallet after changes constitutes acceptance of the revised policy.',
+      'Continued use of Dhan Kamao after changes constitutes acceptance of the revised policy.',
     ]
   },
 ];
@@ -125,7 +125,7 @@ export default function PrivacyPolicyScreen() {
         <h2 className="text-2xl font-bold text-white">Privacy Policy</h2>
         <p className="text-zinc-400 mt-1 text-sm">Last Updated: {customContent?.privacy_last_updated || 'January 2025'}</p>
         <p className="text-zinc-500 text-xs mt-2 max-w-sm mx-auto">
-          Your privacy matters to us. This policy explains how BitPay Wallet collects, uses, protects, and shares your personal information.
+          Your privacy matters to us. This policy explains how Dhan Kamao collects, uses, protects, and shares your personal information.
         </p>
       </div>
 

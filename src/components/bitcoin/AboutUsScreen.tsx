@@ -39,7 +39,7 @@ export default function AboutUsScreen() {
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25 mb-4">
           <Bitcoin className="w-8 h-8 text-white" />
         </div>
-        <h2 className="text-2xl font-bold text-white">BitPay Wallet</h2>
+        <h2 className="text-2xl font-bold text-white">Dhan Kamao</h2>
         <p className="text-zinc-400 mt-1 text-sm">{content.about_subtitle || "India's Trusted Bitcoin Platform"}</p>
       </div>
 
@@ -51,7 +51,7 @@ export default function AboutUsScreen() {
             <h3 className="text-white font-semibold">Our Mission</h3>
           </div>
           <p className="text-zinc-400 text-sm leading-relaxed">
-            {content.about_mission_text || "BitPay Wallet is on a mission to make Bitcoin accessible to every Indian. We believe that financial freedom is a fundamental right, and cryptocurrency is the key to unlocking it. Our platform bridges the gap between complex blockchain technology and everyday users, making it simple for anyone to buy, sell, and hold Bitcoin using Indian Rupees."}
+            {content.about_mission_text || "Dhan Kamao is on a mission to make Bitcoin accessible to every Indian. We believe that financial freedom is a fundamental right, and cryptocurrency is the key to unlocking it. Our platform bridges the gap between complex blockchain technology and everyday users, making it simple for anyone to buy, sell, and hold Bitcoin using Indian Rupees."}
           </p>
         </CardContent>
       </Card>
@@ -64,7 +64,7 @@ export default function AboutUsScreen() {
             <h3 className="text-white font-semibold">Our Story</h3>
           </div>
           <p className="text-zinc-400 text-sm leading-relaxed">
-            {content.about_story_text || "Founded in 2023, BitPay Wallet was born from a simple observation: while India has one of the largest tech-savvy populations in the world, cryptocurrency adoption was still limited by complex interfaces, high fees, and lack of Indian payment integration. Our founders, a team of blockchain engineers and fintech experts from Mumbai and Bangalore, set out to build a platform that speaks Indian — with UPI integration, INR pricing, and a mobile-first experience."}
+            {content.about_story_text || "Founded in 2023, Dhan Kamao was born from a simple observation: while India has one of the largest tech-savvy populations in the world, cryptocurrency adoption was still limited by complex interfaces, high fees, and lack of Indian payment integration. Our founders, a team of blockchain engineers and fintech experts from Mumbai and Bangalore, set out to build a platform that speaks Indian — with UPI integration, INR pricing, and a mobile-first experience."}
           </p>
         </CardContent>
       </Card>

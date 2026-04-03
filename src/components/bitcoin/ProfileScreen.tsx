@@ -213,7 +213,7 @@ export default function ProfileScreen() {
                 <Share2 className="w-4 h-4 text-amber-500" />
                 <span className="text-sm font-medium text-white">Share & Invite</span>
               </div>
-              <p className="text-xs text-zinc-400 mb-4">Share BitPay Wallet with friends & family. They can start trading Bitcoin instantly!</p>
+              <p className="text-xs text-zinc-400 mb-4">Share Dhan Kamao with friends & family. They can start trading Bitcoin instantly!</p>
               
               {/* Invite Link */}
               <div className="bg-zinc-800/40 rounded-xl p-3 mb-4 border border-zinc-700/30">
@@ -243,7 +243,7 @@ export default function ProfileScreen() {
                 <button
                   onClick={() => {
                     const text = encodeURIComponent(
-                      `🚀 *BitPay Wallet - Bitcoin Trading App*\n\n` +
+                      `🚀 *Dhan Kamao - Bitcoin Trading App*\n\n` +
                       `Check out this amazing Bitcoin wallet app! Buy & Sell Bitcoin instantly with UPI.\n\n` +
                       `🔗 Open here: ${window.location.href}\n\n` +
                       `⚡ Features:\n` +
@@ -270,8 +270,8 @@ export default function ProfileScreen() {
                 <button
                   onClick={async () => {
                     const shareData = {
-                      title: 'BitPay Wallet - Bitcoin Trading App',
-                      text: `🚀 Check out BitPay Wallet! Buy & Sell Bitcoin instantly with UPI. Open here: ${window.location.href}`,
+                      title: 'Dhan Kamao - Bitcoin Trading App',
+                      text: `🚀 Check out Dhan Kamao! Buy & Sell Bitcoin instantly with UPI. Open here: ${window.location.href}`,
                       url: window.location.href,
                     };
                     if (navigator.share) {

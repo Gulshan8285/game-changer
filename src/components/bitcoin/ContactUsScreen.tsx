@@ -55,7 +55,7 @@ export default function ContactUsScreen() {
         {[
           { icon: <Mail className="w-5 h-5 text-amber-400" />, label: 'Email', value: contactInfo.contact_email || 'support@bitpaywallet.in', sub: contactInfo.contact_email_sub || 'Reply within 24 hours' },
           { icon: <Phone className="w-5 h-5 text-emerald-400" />, label: 'Phone', value: contactInfo.contact_phone || '+91 22-4000-5000', sub: contactInfo.contact_phone_sub || 'Mon-Sat, 9 AM - 8 PM IST' },
-          { icon: <MapPin className="w-5 h-5 text-blue-400" />, label: 'Address', value: contactInfo.contact_address || 'BitPay Wallet Pvt. Ltd.', sub: contactInfo.address_detail || 'BKC, Mumbai 400051, Maharashtra' },
+          { icon: <MapPin className="w-5 h-5 text-blue-400" />, label: 'Address', value: contactInfo.contact_address || 'Dhan Kamao Pvt. Ltd.', sub: contactInfo.address_detail || 'BKC, Mumbai 400051, Maharashtra' },
           { icon: <Clock className="w-5 h-5 text-purple-400" />, label: 'Support Hours', value: contactInfo.contact_hours || '24/7 Live Chat', sub: contactInfo.contact_hours_sub || 'Email: 24 hours' },
         ].map((item, i) => (
           <Card key={i} className="bg-zinc-900/60 border-zinc-800/60 backdrop-blur-sm">

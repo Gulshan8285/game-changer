@@ -11,10 +11,10 @@ const TERMS_CONTENT = `
 BITPAY WALLET - TERMS AND CONDITIONS
 Last Updated: January 2025
 
-Welcome to BitPay Wallet ("the Platform"). By accessing or using our services, you agree to be bound by these Terms and Conditions ("Terms"). Please read them carefully before proceeding.
+Welcome to Dhan Kamao ("the Platform"). By accessing or using our services, you agree to be bound by these Terms and Conditions ("Terms"). Please read them carefully before proceeding.
 
 1. ACCEPTANCE OF TERMS
-By creating an account and using BitPay Wallet, you acknowledge that you have read, understood, and agree to be bound by these Terms in their entirety. If you do not agree to any part of these Terms, you must not use our services.
+By creating an account and using Dhan Kamao, you acknowledge that you have read, understood, and agree to be bound by these Terms in their entirety. If you do not agree to any part of these Terms, you must not use our services.
 
 2. ELIGIBILITY
 You must be at least 18 years of age and a resident of India to use this Platform. By using this service, you represent and warrant that you meet these eligibility requirements. Users must provide accurate and complete information during registration.
@@ -23,34 +23,34 @@ You must be at least 18 years of age and a resident of India to use this Platfor
 When you create an account, you must provide accurate, current, and complete information including your full name, email address, phone number, and other required details. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.
 
 4. BITCOIN SERVICES
-BitPay Wallet provides Bitcoin-related services including price tracking, portfolio management, and payment processing. Bitcoin is a volatile digital asset, and its value can fluctuate significantly. We do not provide investment advice, and you should conduct your own research before making any investment decisions.
+Dhan Kamao provides Bitcoin-related services including price tracking, portfolio management, and payment processing. Bitcoin is a volatile digital asset, and its value can fluctuate significantly. We do not provide investment advice, and you should conduct your own research before making any investment decisions.
 
 5. KYC AND BANKING INFORMATION
-To use certain features, you may be required to provide banking information including account numbers, IFSC codes, and UPI IDs. You are solely responsible for the accuracy of this information. BitPay Wallet takes reasonable measures to protect your data but cannot be held liable for losses arising from incorrect banking information.
+To use certain features, you may be required to provide banking information including account numbers, IFSC codes, and UPI IDs. You are solely responsible for the accuracy of this information. Dhan Kamao takes reasonable measures to protect your data but cannot be held liable for losses arising from incorrect banking information.
 
 6. UPI TRANSACTIONS
-All UPI transactions are processed through authorized payment gateways. BitPay Wallet acts as an intermediary and is not responsible for any failures, delays, or issues arising from the underlying UPI infrastructure or your bank.
+All UPI transactions are processed through authorized payment gateways. Dhan Kamao acts as an intermediary and is not responsible for any failures, delays, or issues arising from the underlying UPI infrastructure or your bank.
 
 7. PRIVACY AND DATA PROTECTION
 We collect and process your personal data in accordance with applicable Indian data protection laws. Your personal information, including banking details and UPI IDs, is encrypted and stored securely. We will never share your personal data with third parties without your explicit consent, except as required by law.
 
 8. FEES AND CHARGES
-BitPay Wallet reserves the right to charge fees for certain services. Any applicable fees will be clearly communicated to you before you are charged. We reserve the right to modify our fee structure with reasonable notice.
+Dhan Kamao reserves the right to charge fees for certain services. Any applicable fees will be clearly communicated to you before you are charged. We reserve the right to modify our fee structure with reasonable notice.
 
 9. PROHIBITED ACTIVITIES
 You agree not to: (a) use the Platform for any illegal activities; (b) attempt to hack, bypass, or compromise our security systems; (c) use automated bots or scripts to access the Platform; (d) engage in money laundering, fraud, or other financial crimes; (e) impersonate any person or entity.
 
 10. RISK DISCLOSURE
-Cryptocurrency investments carry inherent risks including but not limited to: market volatility, regulatory changes, technology failures, and security breaches. You acknowledge these risks and agree that BitPay Wallet shall not be liable for any losses resulting from Bitcoin price fluctuations.
+Cryptocurrency investments carry inherent risks including but not limited to: market volatility, regulatory changes, technology failures, and security breaches. You acknowledge these risks and agree that Dhan Kamao shall not be liable for any losses resulting from Bitcoin price fluctuations.
 
 11. INTELLECTUAL PROPERTY
-All content, logos, trademarks, and intellectual property displayed on the Platform are owned by or licensed to BitPay Wallet. You may not reproduce, distribute, or create derivative works without our express written permission.
+All content, logos, trademarks, and intellectual property displayed on the Platform are owned by or licensed to Dhan Kamao. You may not reproduce, distribute, or create derivative works without our express written permission.
 
 12. LIMITATION OF LIABILITY
-To the maximum extent permitted by law, BitPay Wallet shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Platform. Our total liability shall not exceed the fees paid by you in the twelve months preceding the claim.
+To the maximum extent permitted by law, Dhan Kamao shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from your use of the Platform. Our total liability shall not exceed the fees paid by you in the twelve months preceding the claim.
 
 13. INDEMNIFICATION
-You agree to indemnify and hold harmless BitPay Wallet, its officers, directors, employees, and agents from any claims, damages, losses, or expenses arising from your use of the Platform or violation of these Terms.
+You agree to indemnify and hold harmless Dhan Kamao, its officers, directors, employees, and agents from any claims, damages, losses, or expenses arising from your use of the Platform or violation of these Terms.
 
 14. TERMINATION
 We reserve the right to suspend or terminate your account at our sole discretion, without prior notice, for any violation of these Terms or suspicious activity. Upon termination, your right to use the Platform ceases immediately.
@@ -67,11 +67,11 @@ We reserve the right to modify these Terms at any time. We will notify you of ma
 18. CONTACT INFORMATION
 For any questions or concerns regarding these Terms, please contact us at:
 Email: support@bitpaywallet.in
-Address: BitPay Wallet Pvt. Ltd., Mumbai, Maharashtra, India
+Address: Dhan Kamao Pvt. Ltd., Mumbai, Maharashtra, India
 
-By scrolling through and accepting these Terms, you confirm that you have read, understood, and agree to be bound by all the provisions outlined above. This acceptance is legally binding and forms the basis of your relationship with BitPay Wallet.
+By scrolling through and accepting these Terms, you confirm that you have read, understood, and agree to be bound by all the provisions outlined above. This acceptance is legally binding and forms the basis of your relationship with Dhan Kamao.
 
-Thank you for choosing BitPay Wallet. Happy investing!
+Thank you for choosing Dhan Kamao. Happy investing!
 `;
 
 export default function TermsScreen() {

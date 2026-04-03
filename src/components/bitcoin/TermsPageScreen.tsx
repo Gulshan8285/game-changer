@@ -10,8 +10,8 @@ const SECTIONS = [
     icon: <FileText className="w-5 h-5 text-amber-500" />,
     title: '1. Acceptance of Terms',
     content: [
-      'By creating an account and using BitPay Wallet ("the Platform"), you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions ("Terms") in their entirety. If you do not agree to any part of these Terms, you must not use our services.',
-      'These Terms constitute a legally binding agreement between you ("User") and BitPay Wallet Pvt. Ltd. ("Company"), a company incorporated under the laws of India.',
+      'By creating an account and using Dhan Kamao ("the Platform"), you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions ("Terms") in their entirety. If you do not agree to any part of these Terms, you must not use our services.',
+      'These Terms constitute a legally binding agreement between you ("User") and Dhan Kamao Pvt. Ltd. ("Company"), a company incorporated under the laws of India.',
     ]
   },
   {
@@ -31,7 +31,7 @@ const SECTIONS = [
       'When you create an account, you must provide accurate, current, and complete information including your full name, email address, phone number, and other required details.',
       'You are solely responsible for maintaining the confidentiality of your account credentials (password, 2FA codes, PIN).',
       'You must notify us immediately of any unauthorized access or use of your account.',
-      'BitPay Wallet will never ask for your password or 2FA codes via email, phone, or chat.',
+      'Dhan Kamao will never ask for your password or 2FA codes via email, phone, or chat.',
       'Each user is limited to one account. Multiple accounts may result in suspension.',
     ]
   },
@@ -39,11 +39,11 @@ const SECTIONS = [
     icon: <Bitcoin className="w-5 h-5 text-amber-500" />,
     title: '4. Bitcoin Services',
     content: [
-      'BitPay Wallet provides Bitcoin-related services including real-time price tracking in INR, portfolio management, and payment processing.',
+      'Dhan Kamao provides Bitcoin-related services including real-time price tracking in INR, portfolio management, and payment processing.',
       'Bitcoin is a volatile digital asset, and its value can fluctuate significantly. We do not provide investment advice, and you should conduct your own research before making any investment decisions.',
-      'All Bitcoin transactions, once confirmed on the blockchain, are irreversible. BitPay Wallet is not liable for losses arising from market fluctuations.',
+      'All Bitcoin transactions, once confirmed on the blockchain, are irreversible. Dhan Kamao is not liable for losses arising from market fluctuations.',
       'We provide real-time INR pricing sourced from multiple exchanges. Prices may vary slightly due to market conditions.',
-      'BitPay Wallet acts as an intermediary and is not a financial institution, bank, or registered broker-dealer.',
+      'Dhan Kamao acts as an intermediary and is not a financial institution, bank, or registered broker-dealer.',
     ]
   },
   {
@@ -51,7 +51,7 @@ const SECTIONS = [
     title: '5. KYC & Banking Information',
     content: [
       'To use certain features, you may be required to complete KYC (Know Your Customer) verification and provide banking information including account numbers, IFSC codes, and UPI IDs.',
-      'You are solely responsible for the accuracy of this information. BitPay Wallet takes reasonable measures to protect your data but cannot be held liable for losses arising from incorrect banking information.',
+      'You are solely responsible for the accuracy of this information. Dhan Kamao takes reasonable measures to protect your data but cannot be held liable for losses arising from incorrect banking information.',
       'KYC information is processed in compliance with RBI guidelines and Indian data protection laws.',
     ]
   },
@@ -60,7 +60,7 @@ const SECTIONS = [
     title: '6. UPI Transactions',
     content: [
       'All UPI transactions are processed through authorized payment gateway partners.',
-      'BitPay Wallet acts as an intermediary and is not responsible for any failures, delays, or issues arising from the underlying UPI infrastructure or your bank.',
+      'Dhan Kamao acts as an intermediary and is not responsible for any failures, delays, or issues arising from the underlying UPI infrastructure or your bank.',
       'UPI transaction limits are subject to RBI guidelines and your bank\'s policies.',
       'Transaction fees, if any, will be clearly displayed before confirmation.',
     ]
@@ -86,16 +86,16 @@ const SECTIONS = [
       'Cryptocurrency investments carry inherent risks including but not limited to: market volatility, regulatory changes, technology failures, security breaches, liquidity risks, and loss of private keys.',
       'The value of Bitcoin can decrease dramatically and you may lose your entire investment.',
       'Past performance is not indicative of future results.',
-      'BitPay Wallet shall not be liable for any losses resulting from Bitcoin price fluctuations, network congestion, or blockchain confirmation delays.',
-      'You acknowledge these risks and agree that BitPay Wallet shall not be liable for any investment losses.',
+      'Dhan Kamao shall not be liable for any losses resulting from Bitcoin price fluctuations, network congestion, or blockchain confirmation delays.',
+      'You acknowledge these risks and agree that Dhan Kamao shall not be liable for any investment losses.',
     ]
   },
   {
     icon: <CheckCircle2 className="w-5 h-5 text-amber-500" />,
     title: '9. Intellectual Property',
     content: [
-      'All content, logos, trademarks, service marks, and intellectual property displayed on the Platform are owned by or licensed to BitPay Wallet Pvt. Ltd.',
-      'The BitPay Wallet name, logo, and all related branding are proprietary assets.',
+      'All content, logos, trademarks, service marks, and intellectual property displayed on the Platform are owned by or licensed to Dhan Kamao Pvt. Ltd.',
+      'The Dhan Kamao name, logo, and all related branding are proprietary assets.',
       'You may not reproduce, distribute, modify, create derivative works from, or commercially exploit any content without our express written permission.',
       'Unauthorized use of our intellectual property will result in legal action.',
     ]
@@ -104,7 +104,7 @@ const SECTIONS = [
     icon: <Gavel className="w-5 h-5 text-amber-500" />,
     title: '10. Limitation of Liability',
     content: [
-      'To the maximum extent permitted by applicable Indian law, BitPay Wallet shall not be liable for any indirect, incidental, special, consequential, or punitive damages.',
+      'To the maximum extent permitted by applicable Indian law, Dhan Kamao shall not be liable for any indirect, incidental, special, consequential, or punitive damages.',
       'Our total liability for any claim shall not exceed the fees paid by you in the twelve (12) months preceding the event giving rise to the claim.',
       'We are not liable for any loss of Bitcoin, fiat currency, or other assets arising from: (a) Unauthorized access due to your failure to secure your credentials, (b) Market volatility, (c) Force majeure events, (d) Third-party service failures.',
     ]
@@ -113,7 +113,7 @@ const SECTIONS = [
     icon: <RefreshCw className="w-5 h-5 text-amber-500" />,
     title: '11. Indemnification',
     content: [
-      'You agree to indemnify, defend, and hold harmless BitPay Wallet, its officers, directors, employees, agents, affiliates, and partners from and against any claims, damages, losses, liabilities, costs, and expenses (including reasonable legal fees) arising from: (a) Your use of the Platform, (b) Your violation of these Terms, (c) Your violation of any applicable law or regulation.',
+      'You agree to indemnify, defend, and hold harmless Dhan Kamao, its officers, directors, employees, agents, affiliates, and partners from and against any claims, damages, losses, liabilities, costs, and expenses (including reasonable legal fees) arising from: (a) Your use of the Platform, (b) Your violation of these Terms, (c) Your violation of any applicable law or regulation.',
     ]
   },
   {
@@ -154,7 +154,7 @@ const SECTIONS = [
       'For any questions, concerns, or legal notices regarding these Terms, please contact us:',
       'Email: legal@bitpaywallet.in',
       'Phone: +91 22-4000-5000',
-      'Address: BitPay Wallet Pvt. Ltd., Bandra Kurla Complex (BKC), Mumbai 400051, Maharashtra, India.',
+      'Address: Dhan Kamao Pvt. Ltd., Bandra Kurla Complex (BKC), Mumbai 400051, Maharashtra, India.',
     ]
   },
 ];
@@ -181,7 +181,7 @@ export default function TermsPageScreen() {
         <h2 className="text-2xl font-bold text-white">Terms & Conditions</h2>
         <p className="text-zinc-400 mt-1 text-sm">Last Updated: {customContent?.terms_last_updated || 'January 2025'}</p>
         <p className="text-zinc-500 text-xs mt-2 max-w-sm mx-auto">
-          Please read these Terms carefully. By using BitPay Wallet, you agree to all the terms listed below.
+          Please read these Terms carefully. By using Dhan Kamao, you agree to all the terms listed below.
         </p>
       </div>
 
@@ -235,7 +235,7 @@ export default function TermsPageScreen() {
           <CheckCircle2 className="w-6 h-6 text-amber-400 mx-auto mb-2" />
           <p className="text-white font-medium text-sm">Acknowledgment</p>
           <p className="text-zinc-400 text-xs mt-1">
-            By using BitPay Wallet, you confirm that you have read, understood, and agree to these Terms & Conditions.
+            By using Dhan Kamao, you confirm that you have read, understood, and agree to these Terms & Conditions.
           </p>
         </CardContent>
       </Card>
