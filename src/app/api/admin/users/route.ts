@@ -22,3 +22,28 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  if (!checkAdminAuth(request)) return unauthorizedResponse()
+
+  try {
+    const { searchParams } = new URL(request.url)
+    const userId = searchParams.get('id')
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
+    }
+
+    // Delete user's payment proofs first
+    await rawQuery(`DELETE FROM PaymentProof WHERE userId = '${userId}'`)
+
+    // Delete the user
+    await rawQuery(`DELETE FROM User WHERE id = '${userId}'`)
+
+    return NextResponse.json({ success: true, message: 'User deleted successfully' })
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete user' },
+      { status: 500 }
+    )
+  }
+}

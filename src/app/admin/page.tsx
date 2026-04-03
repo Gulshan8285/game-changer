@@ -621,9 +621,11 @@ interface UsersTabProps {
   loadingUsers: boolean;
   userSearch: string;
   setUserSearch: React.Dispatch<React.SetStateAction<string>>;
+  handleDeleteUser: (userId: string, userName: string) => Promise<void>;
 }
 
-const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUserSearch }: UsersTabProps) {
+const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUserSearch, handleDeleteUser }: UsersTabProps) {
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const filteredUsers = users.filter(
     (u) =>
       !userSearch ||
@@ -672,6 +674,7 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
                     <TableHead className="text-zinc-500 text-xs">Email</TableHead>
                     <TableHead className="text-zinc-500 text-xs">Phone</TableHead>
                     <TableHead className="text-zinc-500 text-xs">Joined</TableHead>
+                    <TableHead className="text-zinc-500 text-xs text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -688,6 +691,29 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
                       <TableCell className="text-zinc-400 text-sm">{u.email}</TableCell>
                       <TableCell className="text-zinc-400 text-sm">{u.phone || '—'}</TableCell>
                       <TableCell className="text-zinc-500 text-xs">{formatDateShort(u.createdAt)}</TableCell>
+                      <TableCell className="text-right">
+                        <AlertDialog open={deleteTarget?.id === u.id} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+                          <AlertDialogTrigger asChild>
+                            <button className="p-2 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                              <Trash2 className="size-4" />
+                            </button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="bg-zinc-900 border-zinc-800">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="text-white">Delete User</AlertDialogTitle>
+                              <AlertDialogDescription className="text-zinc-400">
+                                Are you sure you want to delete <span className="text-white font-semibold">{u.name}</span>? This will permanently remove the user and all their payment proofs. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700">Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteUser(u.id, u.name)} className="bg-red-600 hover:bg-red-700 text-white">
+                                Delete User
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -949,6 +975,19 @@ export default function AdminPage() {
       setLoadingUsers(false);
     }
   }, [headers]);
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    try {
+      const res = await fetch(`/api/admin/users?id=${userId}`, { method: 'DELETE', headers: headers() });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`User "${userName}" deleted!`);
+        fetchUsers();
+      } else toast.error(data.error || 'Failed to delete user');
+    } catch {
+      toast.error('Delete failed');
+    }
+  };
 
   const fetchContent = useCallback(async () => {
     setLoadingContent(true);
@@ -2349,7 +2388,7 @@ export default function AdminPage() {
       case 'payments': return <PaymentsTab />;
       case 'withdrawals': return <WithdrawalsTab />;
       case 'notifications': return <NotificationsTab />;
-      case 'users': return <UsersTab users={users} loadingUsers={loadingUsers} userSearch={userSearch} setUserSearch={setUserSearch} />;
+      case 'users': return <UsersTab users={users} loadingUsers={loadingUsers} userSearch={userSearch} setUserSearch={setUserSearch} handleDeleteUser={handleDeleteUser} />;
       case 'content': return <ContentTab siteContent={siteContent} setSiteContent={setSiteContent} contentPage={contentPage} setContentPage={setContentPage} loadingContent={loadingContent} savingContentKey={savingContentKey} handleSaveContent={handleSaveContent} />;
       default: return <DashboardTab />;
     }
