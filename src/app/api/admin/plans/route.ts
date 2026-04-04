@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
 export async function GET(request: NextRequest) {
   if (!checkAdminAuth(request)) return unauthorizedResponse()
 
   try {
-    const plans = await rawQuery('SELECT * FROM InvestmentPlan ORDER BY sortOrder ASC, createdAt ASC') as any[]
+    const plans = await db.investmentPlan.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
     return NextResponse.json({ success: true, plans })
   } catch (error) {
     console.error('Plans GET error:', error)
@@ -29,12 +27,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
     }
 
-    await rawQuery(
-      `INSERT INTO InvestmentPlan (id, name, price, daily, monthly, totalReturn, color, iconBg, iconColor, isActive, sortOrder, createdAt, updatedAt)
-       VALUES (lower(hex(randomblob(12))), '${name.replace(/'/g, "''")}', ${price}, ${daily}, ${monthly || 0}, ${totalReturn}, '${(color || 'bg-emerald-500').replace(/'/g, "''")}', '${(iconBg || 'bg-emerald-500/20').replace(/'/g, "''")}', '${(iconColor || 'text-emerald-400').replace(/'/g, "''")}', ${isActive !== false ? 1 : 0}, ${sortOrder || 0}, datetime('now'), datetime('now'))`
-    )
+    const plan = await db.investmentPlan.create({
+      data: {
+        name: String(name),
+        price: Number(price),
+        daily: Number(daily),
+        monthly: Number(monthly || 0),
+        totalReturn: Number(totalReturn),
+        color: String(color || 'bg-emerald-500'),
+        iconBg: String(iconBg || 'bg-emerald-500/20'),
+        iconColor: String(iconColor || 'text-emerald-400'),
+        isActive: isActive !== false,
+        sortOrder: Number(sortOrder || 0),
+      },
+    })
 
-    return NextResponse.json({ success: true, plan: body })
+    return NextResponse.json({ success: true, plan })
   } catch (error) {
     console.error('Plans POST error:', error)
     return NextResponse.json({ success: false, error: 'Failed to create plan' }, { status: 500 })

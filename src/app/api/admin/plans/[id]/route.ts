@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!checkAdminAuth(request)) return unauthorizedResponse()
 
@@ -14,22 +10,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const { name, price, daily, monthly, totalReturn, color, iconBg, iconColor, isActive, sortOrder } = body
 
-    const sets: string[] = []
-    if (name !== undefined) sets.push(`name = '${name.replace(/'/g, "''")}'`)
-    if (price !== undefined) sets.push(`price = ${price}`)
-    if (daily !== undefined) sets.push(`daily = ${daily}`)
-    if (monthly !== undefined) sets.push(`monthly = ${monthly}`)
-    if (totalReturn !== undefined) sets.push(`totalReturn = ${totalReturn}`)
-    if (color !== undefined) sets.push(`color = '${color.replace(/'/g, "''")}'`)
-    if (iconBg !== undefined) sets.push(`iconBg = '${iconBg.replace(/'/g, "''")}'`)
-    if (iconColor !== undefined) sets.push(`iconColor = '${iconColor.replace(/'/g, "''")}'`)
-    if (isActive !== undefined) sets.push(`isActive = ${isActive ? 1 : 0}`)
-    if (sortOrder !== undefined) sets.push(`sortOrder = ${sortOrder}`)
-    sets.push(`updatedAt = datetime('now')`)
+    const data: Record<string, string | number | boolean> = {}
+    if (name !== undefined) data.name = String(name)
+    if (price !== undefined) data.price = Number(price)
+    if (daily !== undefined) data.daily = Number(daily)
+    if (monthly !== undefined) data.monthly = Number(monthly)
+    if (totalReturn !== undefined) data.totalReturn = Number(totalReturn)
+    if (color !== undefined) data.color = String(color)
+    if (iconBg !== undefined) data.iconBg = String(iconBg)
+    if (iconColor !== undefined) data.iconColor = String(iconColor)
+    if (isActive !== undefined) data.isActive = Boolean(isActive)
+    if (sortOrder !== undefined) data.sortOrder = Number(sortOrder)
 
-    if (sets.length === 0) return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 })
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 })
+    }
 
-    await rawQuery(`UPDATE InvestmentPlan SET ${sets.join(', ')} WHERE id = '${id}'`)
+    await db.investmentPlan.update({
+      where: { id },
+      data,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -43,7 +43,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   try {
     const { id } = await params
-    await rawQuery(`DELETE FROM InvestmentPlan WHERE id = '${id}'`)
+    await db.investmentPlan.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Plan delete error:', error)

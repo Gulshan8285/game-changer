@@ -15,12 +15,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const safeName = username.replace(/'/g, "''")
-    const results: any[] = await db.$queryRawUnsafe(
-      `SELECT * FROM AdminAuth WHERE username = '${safeName}'`
-    )
-
-    const admin = results[0]
+    const admin = await db.adminAuth.findUnique({
+      where: { username: String(username) },
+    })
 
     if (!admin || admin.password !== password) {
       return NextResponse.json(

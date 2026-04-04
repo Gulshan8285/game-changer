@@ -2,39 +2,43 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
 export async function GET(request: NextRequest) {
   if (!checkAdminAuth(request)) return unauthorizedResponse()
 
   try {
-    const rows = await rawQuery(`
-      SELECT
-        (SELECT count(*) FROM User) as totalUsers,
-        (SELECT count(*) FROM InvestmentPlan WHERE isActive = 1) as activeInvestments,
-        (SELECT count(*) FROM PaymentRequest WHERE status = 'pending') as pendingPayments,
-        (SELECT count(*) FROM WithdrawalRequest WHERE status = 'pending') as pendingWithdrawals,
-        (SELECT count(*) FROM PaymentRequest WHERE status = 'approved') as totalPayments,
-        (SELECT count(*) FROM PaymentProof WHERE status = 'pending') as pendingProofs
-    `) as any[]
+    const [
+      totalUsers,
+      activeInvestments,
+      pendingPayments,
+      pendingWithdrawals,
+      totalPayments,
+      paymentProofs,
+      approvedPaymentAggregate,
+    ] = await Promise.all([
+      db.user.count(),
+      db.investmentPlan.count({ where: { isActive: true } }),
+      db.paymentRequest.count({ where: { status: 'pending' } }),
+      db.withdrawalRequest.count({ where: { status: 'pending' } }),
+      db.paymentRequest.count({ where: { status: 'approved' } }),
+      db.paymentProof.count({ where: { status: 'pending' } }),
+      db.paymentRequest.aggregate({
+        where: { status: 'approved' },
+        _sum: { amount: true },
+      }),
+    ])
 
-    let totalInvestedAmount = 0
-    try {
-      const ti = await rawQuery("SELECT total(amount) as t FROM PaymentRequest WHERE status = 'approved'") as any[]
-      totalInvestedAmount = Number(ti[0]?.t || 0)
-    } catch { /* table might not have data */ }
+    const totalInvestedAmount = Number(approvedPaymentAggregate._sum.amount || 0)
 
     return NextResponse.json({
       success: true,
       stats: {
-        totalUsers: Number(rows[0]?.totalUsers || 0),
-        activeInvestments: Number(rows[0]?.activeInvestments || 0),
-        pendingPayments: Number(rows[0]?.pendingPayments || 0),
-        pendingWithdrawals: Number(rows[0]?.pendingWithdrawals || 0),
+        totalUsers,
+        activeInvestments,
+        pendingPayments,
+        pendingWithdrawals,
         totalInvestedAmount,
-        totalPayments: Number(rows[0]?.totalPayments || 0),
+        totalPayments,
+        pendingProofs: paymentProofs,
       },
     })
   } catch (error) {

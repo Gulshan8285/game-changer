@@ -2,14 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
-function sanitize(value: string) {
-  return value.replace(/'/g, "''")
-}
-
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,21 +20,15 @@ export async function PUT(
       )
     }
 
-    const safeStatus = sanitize(status)
-    const safeAdminNote = adminNote ? `'${sanitize(adminNote)}'` : 'NULL'
-    const safeId = sanitize(id)
+    const withdrawal = await db.withdrawalRequest.update({
+      where: { id },
+      data: {
+        status,
+        adminNote: adminNote ? String(adminNote) : null,
+      },
+    })
 
-    await rawQuery(`
-      UPDATE WithdrawalRequest
-      SET status = '${safeStatus}', adminNote = ${safeAdminNote}, updatedAt = datetime('now')
-      WHERE id = '${safeId}'
-    `)
-
-    const withdrawals = await rawQuery(
-      `SELECT * FROM WithdrawalRequest WHERE id = '${safeId}'`
-    ) as any[]
-
-    return NextResponse.json({ success: true, withdrawal: withdrawals[0] || null })
+    return NextResponse.json({ success: true, withdrawal })
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Failed to update withdrawal' },

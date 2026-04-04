@@ -2,14 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
-function sanitize(value: string) {
-  return value.replace(/'/g, "''")
-}
-
 export async function GET(request: NextRequest) {
   if (!checkAdminAuth(request)) return unauthorizedResponse()
 
@@ -17,19 +9,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
 
-    let sql = `
-      SELECT pr.*, u.phone as userPhone
-      FROM PaymentRequest pr
-      LEFT JOIN User u ON pr.userId = u.id
-    `
-    if (status) {
-      sql += ` WHERE pr.status = '${sanitize(status)}'`
-    }
-    sql += ' ORDER BY pr.createdAt DESC'
+    const payments = await db.paymentRequest.findMany({
+      where: status ? { status } : undefined,
+      include: {
+        user: {
+          select: { phone: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
 
-    const payments = await rawQuery(sql) as any[]
+    const serializedPayments = payments.map(({ user, ...payment }) => ({
+      ...payment,
+      userPhone: user?.phone || null,
+    }))
 
-    return NextResponse.json({ success: true, payments })
+    return NextResponse.json({ success: true, payments: serializedPayments })
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Failed to fetch payments' },

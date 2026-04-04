@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
-function sanitize(value: string) {
-  return value.replace(/'/g, "''")
-}
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -16,31 +8,36 @@ export async function GET(request: NextRequest) {
     const checkUserId = searchParams.get('userId')
 
     if (markRead) {
-      await rawQuery(
-        `UPDATE AdminNotification SET isRead = 1 WHERE id = '${sanitize(markRead)}'`
-      )
+      await db.adminNotification.update({
+        where: { id: markRead },
+        data: { isRead: true },
+      })
     }
 
     // Check if user has been force-logged-out by admin
     let forceLogout = false
     if (checkUserId) {
-      const users = await rawQuery(
-        `SELECT forceLogoutAt FROM User WHERE id = '${sanitize(checkUserId)}'`
-      ) as any[]
-      if (users.length > 0 && users[0].forceLogoutAt) {
+      const user = await db.user.findUnique({
+        where: { id: checkUserId },
+        select: { forceLogoutAt: true },
+      })
+
+      if (user?.forceLogoutAt) {
         // Check if forceLogoutAt is after their last login (use current session time)
         // We just return the flag — the client will handle logout
         forceLogout = true
         // Clear the flag after detecting so it doesn't keep triggering
-        await rawQuery(
-          `UPDATE User SET forceLogoutAt = NULL WHERE id = '${sanitize(checkUserId)}'`
-        )
+        await db.user.update({
+          where: { id: checkUserId },
+          data: { forceLogoutAt: null },
+        })
       }
     }
 
-    const notifications = await rawQuery(
-      'SELECT * FROM AdminNotification ORDER BY createdAt DESC LIMIT 20'
-    ) as any[]
+    const notifications = await db.adminNotification.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    })
 
     return NextResponse.json({ success: true, notifications, forceLogout })
   } catch (error) {

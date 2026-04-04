@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
 export async function GET() {
   try {
-    const contents = await rawQuery('SELECT * FROM SiteContent') as any[]
+    const contents = await db.siteContent.findMany({
+      orderBy: { key: 'asc' },
+    })
     const contentMap: Record<string, string> = {}
     for (const item of contents) {
       contentMap[item.key] = item.value
