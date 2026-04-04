@@ -25,6 +25,7 @@ model User {
   pincode       String?
   termsAccepted Boolean  @default(false)
   isGoogleAuth  Boolean  @default(false)
+  forceLogoutAt DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

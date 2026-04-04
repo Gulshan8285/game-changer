@@ -17,22 +17,32 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [showGoogleHelp, setShowGoogleHelp] = useState(false);
   const [siteContent, setSiteContent] = useState<Record<string, string>>({});
+  const [googleClientId, setGoogleClientId] = useState('');
   const { setScreen, setUser, setNeedsTermsAcceptance, setLoading: setAppLoading } = useAppStore();
 
-  // Fetch site content from API
+  // Fetch site content + Google Client ID from API (runtime, not build-time)
   useEffect(() => {
-    const fetchContent = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch('/api/content');
-        if (res.ok) {
-          const data = await res.json();
+        const [contentRes, googleRes] = await Promise.all([
+          fetch('/api/content'),
+          fetch('/api/auth/google-config'),
+        ]);
+        if (contentRes.ok) {
+          const data = await contentRes.json();
           if (data.success && data.content) {
             setSiteContent(data.content);
           }
         }
+        if (googleRes.ok) {
+          const googleData = await googleRes.json();
+          if (googleData.clientId) {
+            setGoogleClientId(googleData.clientId);
+          }
+        }
       } catch { /* ignore */ }
     };
-    fetchContent();
+    fetchData();
   }, []);
 
   // Handle Google OAuth callback redirect
@@ -133,7 +143,8 @@ export default function SignupScreen() {
   };
 
   const handleGoogleSignup = () => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    // Use client ID fetched from server API (runtime) — not build-time env
+    const clientId = googleClientId || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
       setError('Google login not configured. Use email signup.');
       return;

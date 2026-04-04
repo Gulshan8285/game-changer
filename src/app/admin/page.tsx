@@ -695,10 +695,10 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
                       <TableCell className="text-right">
                         <button
                           onClick={() => setResetTarget({ id: u.id, name: u.name })}
-                          className="p-2 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                          title="Reset User Data"
+                          className="p-2 rounded-lg text-zinc-600 hover:text-orange-400 hover:bg-orange-500/10 transition-colors"
+                          title="Force Logout User"
                         >
-                          <Trash2 className="size-4" />
+                          <LogOut className="size-4" />
                         </button>
                       </TableCell>
                     </TableRow>
@@ -715,16 +715,16 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !resetting && setResetTarget(null)}>
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
-                <Trash2 className="w-5 h-5 text-red-400" />
+              <div className="w-10 h-10 rounded-full bg-orange-500/15 flex items-center justify-center">
+                <LogOut className="w-5 h-5 text-orange-400" />
               </div>
-              <h3 className="text-lg font-semibold text-white">Reset User Data</h3>
+              <h3 className="text-lg font-semibold text-white">Force Logout User</h3>
             </div>
             <p className="text-zinc-400 text-sm mb-2">
-              Kya aap <span className="text-white font-semibold">{resetTarget.name}</span> ka data reset karna chahte hain?
+              Kya aap <span className="text-white font-semibold">{resetTarget.name}</span> ko logout karna chahte hain?
             </p>
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-4">
-              <p className="text-amber-400 text-xs">⚠️ User ke investments, transactions, payment proofs sab delete ho jayenge. User ka account <span className="font-semibold">nahi delete</span> hoga — wo phir se login kar sakta hai.</p>
+              <p className="text-amber-400 text-xs">⚠️ User ko turant logout kar diya jayega. Wo phir se login karega — uska data safe rahega.</p>
             </div>
             <div className="flex gap-3">
               <button
@@ -745,9 +745,9 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
                 className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {resetting ? (
-                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Resetting...</>
+                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Logging out...</>
                 ) : (
-                  'Reset Data'
+                  'Force Logout'
                 )}
               </button>
             </div>
@@ -1013,11 +1013,11 @@ export default function AdminPage() {
       const res = await fetch(`/api/admin/users?id=${userId}`, { method: 'DELETE', headers: headers() });
       const data = await res.json();
       if (data.success) {
-        toast.success(`"${userName}" ka data reset ho gaya! User phir login kar sakta hai.`);
+        toast.success(`"${userName}" ko logout kar diya gaya! Wo phir login karega.`);
         fetchUsers();
-      } else toast.error(data.error || 'Reset failed');
+      } else toast.error(data.error || 'Logout failed');
     } catch {
-      toast.error('Reset failed');
+      toast.error('Logout failed');
     }
   };
 

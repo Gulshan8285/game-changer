@@ -461,12 +461,23 @@ export default function DashboardScreen() {
   }, []);
 
   // ── Fetch admin notifications from API + poll every 30s ──
+  // Also checks if admin has force-logged-out this user
   useEffect(() => {
     const fetchApiNotifications = async () => {
       try {
-        const res = await fetch('/api/notifications');
+        // Include userId to check for force logout flag
+        const userId = user?.id;
+        const url = userId ? `/api/notifications?userId=${userId}` : '/api/notifications';
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
+
+          // Check if admin has force-logged-out this user
+          if (data.forceLogout) {
+            logout(); // Clear session and redirect to login
+            return;
+          }
+
           if (data.success && data.notifications?.length) {
             const savedNotifs = localStorage.getItem('btc-notifications');
             const localNotifs: any[] = savedNotifs ? JSON.parse(savedNotifs) : [];
@@ -488,7 +499,7 @@ export default function DashboardScreen() {
     fetchApiNotifications();
     const notifInterval = setInterval(fetchApiNotifications, 30000);
     return () => clearInterval(notifInterval);
-  }, []);
+  }, [user?.id, logout]);
 
   // ── 24-hour auto-earning system with countdown timer ──
   // Step 1: On mount + when investments change, credit missed earnings & set initial countdowns

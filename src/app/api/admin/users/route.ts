@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const users = await rawQuery(
-      'SELECT id, name, email, phone, avatar, createdAt FROM User ORDER BY createdAt DESC'
+      'SELECT id, name, email, phone, avatar, createdAt, forceLogoutAt FROM User ORDER BY createdAt DESC'
     ) as any[]
 
     return NextResponse.json({ success: true, users })
@@ -35,17 +35,17 @@ export async function DELETE(request: NextRequest) {
 
     const safeId = userId.replace(/'/g, "''")
 
-    // Reset user data — delete their proofs, requests, withdrawals
-    // User account stays so they can login again
-    await rawQuery(`DELETE FROM PaymentProof WHERE userId = '${safeId}'`)
-    await rawQuery(`DELETE FROM PaymentRequest WHERE userId = '${safeId}'`)
-    await rawQuery(`DELETE FROM WithdrawalRequest WHERE userId = '${safeId}'`)
+    // Set forceLogoutAt to NOW — user will be kicked out on next poll
+    // All their data stays intact, they just need to login again
+    await rawQuery(
+      `UPDATE User SET forceLogoutAt = datetime('now') WHERE id = '${safeId}'`
+    )
 
-    return NextResponse.json({ success: true, message: 'User data reset successfully' })
+    return NextResponse.json({ success: true, message: 'User will be logged out. They need to login again.' })
   } catch (error: any) {
-    console.error('Reset user error:', error)
+    console.error('Force logout error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to reset user: ' + (error?.message || 'Unknown error') },
+      { success: false, error: 'Failed to logout user: ' + (error?.message || 'Unknown error') },
       { status: 500 }
     )
   }

@@ -627,3 +627,42 @@ Stage Summary:
 - Google login will now work (credentials restored in .env)
 - Profile page borders are now subtle/clean matching the floating pill aesthetic
 - All 7 Card components + TabsList + Avatar + Logout button updated
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix Google OAuth login - permanent fix for "Google login not configured" error
+
+Work Log:
+- Root cause: `.env` file keeps losing Google OAuth credentials, and `NEXT_PUBLIC_` env vars are embedded at build time in Next.js client components
+- Added credentials back to `.env`: NEXT_PUBLIC_GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET
+- Created `/api/auth/google-config/route.ts` — server-side endpoint that returns the Google Client ID at runtime (reads from server env, not build-time)
+- Updated LoginScreen.tsx: added `googleClientId` state, fetches from `/api/auth/google-config` on mount via Promise.all with content API, uses fetched ID as primary source with env fallback
+- Updated SignupScreen.tsx: same pattern — fetches client ID from API at runtime
+- This ensures Google login works even if `NEXT_PUBLIC_` env vars get cleared, because the server reads env at request time
+
+Stage Summary:
+- Google login is now resilient to `.env` file clearing — client ID comes from server API at runtime
+- Both Login and Signup screens fetch client ID from `/api/auth/google-config`
+- Fallback to `process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID` still exists as secondary source
+- Zero lint errors, dev server running clean
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Change admin delete button from hard delete to force logout
+
+Work Log:
+- User wants: clicking "delete" in admin panel should force the user to re-login, NOT delete their data
+- Added `forceLogoutAt DateTime?` field to User model in Prisma schema, pushed to DB
+- Rewrote DELETE handler in `/api/admin/users/route.ts`: sets `forceLogoutAt = datetime('now')` instead of deleting PaymentProof/PaymentRequest/WithdrawalRequest
+- Updated `/api/notifications/route.ts`: added `userId` query param support, checks `forceLogoutAt` flag, returns `{ forceLogout: true }` and clears the flag after detection
+- Updated DashboardScreen.tsx notification polling: passes `userId` to notifications API, calls `logout()` when `forceLogout` is detected
+- Updated admin panel UI: changed "Reset User Data" → "Force Logout User", Trash2 icon → LogOut icon (orange), updated Hindi text in confirmation dialog and toast messages
+
+Stage Summary:
+- Admin delete button now forces user logout within 30 seconds (polling interval)
+- User data stays completely intact — only session is invalidated
+- User must re-login after being force-logged-out
+- UI updated with LogOut icon (orange) and clear Hindi/English messaging
+- Zero lint errors, dev server running clean
