@@ -231,6 +231,14 @@ async function main() {
   }
 
   if (plans.length > 0) {
+    await db.investmentPlan.deleteMany({
+      where: {
+        name: {
+          in: plans.map((plan) => plan.name),
+        },
+      },
+    })
+
     await db.investmentPlan.createMany({
       data: plans.map((plan) => ({
         id: plan.id,
