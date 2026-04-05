@@ -561,6 +561,13 @@ export default function DashboardScreen() {
 
           // Check if admin has force-logged-out this user
           if (data.forceLogout) {
+            if (userId) {
+              fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, action: 'logout' }),
+              }).catch(() => {});
+            }
             logout(); // Clear session and redirect to login
             return;
           }

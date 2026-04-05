@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
+import { buildLogoutSessionData, getUserPresence } from '@/lib/user-session'
 
 export async function GET(request: NextRequest) {
   if (!checkAdminAuth(request)) return unauthorizedResponse()
@@ -15,11 +16,23 @@ export async function GET(request: NextRequest) {
         avatar: true,
         createdAt: true,
         forceLogoutAt: true,
+        sessionStatus: true,
+        lastLoginAt: true,
+        lastSeenAt: true,
+        loggedOutAt: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json({ success: true, users })
+    const now = new Date()
+
+    return NextResponse.json({
+      success: true,
+      users: users.map((user) => ({
+        ...user,
+        presence: getUserPresence(user, now),
+      })),
+    })
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Failed to fetch users' },
@@ -42,7 +55,7 @@ export async function DELETE(request: NextRequest) {
     // All their data stays intact, they just need to login again
     await db.user.update({
       where: { id: userId },
-      data: { forceLogoutAt: new Date() },
+      data: buildLogoutSessionData(new Date(), true),
     })
 
     return NextResponse.json({ success: true, message: 'User will be logged out. They need to login again.' })

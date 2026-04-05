@@ -27,6 +27,10 @@ model User {
   termsAccepted Boolean  @default(false)
   isGoogleAuth  Boolean  @default(false)
   forceLogoutAt DateTime?
+  sessionStatus String   @default("logged_out")
+  lastLoginAt   DateTime?
+  lastSeenAt    DateTime?
+  loggedOutAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

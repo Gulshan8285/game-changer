@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { buildLoginSessionData } from '@/lib/user-session';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
         email,
         password: hashedPassword,
         phone: phone || null,
+        ...buildLoginSessionData(),
       }
     });
 

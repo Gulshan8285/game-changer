@@ -44,6 +44,10 @@ type UserRecord = {
   termsAccepted: number | boolean
   isGoogleAuth: number | boolean
   forceLogoutAt: NullableString
+  sessionStatus?: NullableString
+  lastLoginAt?: NullableString
+  lastSeenAt?: NullableString
+  loggedOutAt?: NullableString
   createdAt: number | string
   updatedAt: number | string
 }
@@ -218,6 +222,10 @@ async function main() {
         termsAccepted: toBoolean(user.termsAccepted),
         isGoogleAuth: toBoolean(user.isGoogleAuth),
         forceLogoutAt: toNullableDate(user.forceLogoutAt),
+        sessionStatus: user.sessionStatus || 'logged_out',
+        lastLoginAt: toNullableDate(user.lastLoginAt),
+        lastSeenAt: toNullableDate(user.lastSeenAt),
+        loggedOutAt: toNullableDate(user.loggedOutAt),
         createdAt: toDate(user.createdAt),
         updatedAt: toDate(user.updatedAt),
       })),

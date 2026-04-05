@@ -43,9 +43,17 @@ async function main() {
       "termsAccepted" BOOLEAN NOT NULL DEFAULT FALSE,
       "isGoogleAuth" BOOLEAN NOT NULL DEFAULT FALSE,
       "forceLogoutAt" TIMESTAMPTZ,
+      "sessionStatus" TEXT NOT NULL DEFAULT 'logged_out',
+      "lastLoginAt" TIMESTAMPTZ,
+      "lastSeenAt" TIMESTAMPTZ,
+      "loggedOutAt" TIMESTAMPTZ,
       "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionStatus" TEXT NOT NULL DEFAULT 'logged_out'`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMPTZ`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastSeenAt" TIMESTAMPTZ`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "loggedOutAt" TIMESTAMPTZ`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User" ("email")`,
     `CREATE TABLE IF NOT EXISTS "InvestmentPlan" (
       "id" TEXT PRIMARY KEY,

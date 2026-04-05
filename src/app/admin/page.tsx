@@ -183,6 +183,12 @@ interface UserItem {
   phone: string | null;
   avatar: string | null;
   createdAt: string;
+  forceLogoutAt?: string | null;
+  sessionStatus?: string | null;
+  lastLoginAt?: string | null;
+  lastSeenAt?: string | null;
+  loggedOutAt?: string | null;
+  presence?: 'logged_in' | 'away' | 'logged_out';
 }
 
 interface BtcPrice {
@@ -357,6 +363,55 @@ function formatDateShort(dateStr: string): string {
     month: 'short',
     year: 'numeric',
   });
+}
+
+function formatRelativeTime(dateStr?: string | null): string {
+  if (!dateStr) return '—';
+
+  const timestamp = new Date(dateStr).getTime();
+  if (Number.isNaN(timestamp)) return '—';
+
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 60 * 1000) return 'just now';
+
+  const diffMins = Math.floor(diffMs / (60 * 1000));
+  if (diffMins < 60) return `${diffMins}m ago`;
+
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+function getUserPresenceMeta(user: UserItem) {
+  switch (user.presence) {
+    case 'logged_in':
+      return {
+        label: 'Logged In',
+        badgeClass: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/20',
+        dotClass: 'bg-emerald-400',
+        detail: user.lastSeenAt ? `Active ${formatRelativeTime(user.lastSeenAt)}` : 'Session active',
+      };
+    case 'away':
+      return {
+        label: 'Away',
+        badgeClass: 'bg-amber-500/12 text-amber-300 border-amber-500/20',
+        dotClass: 'bg-amber-400',
+        detail: user.lastSeenAt ? `Last seen ${formatRelativeTime(user.lastSeenAt)}` : 'Inactive session',
+      };
+    default:
+      return {
+        label: 'Logged Out',
+        badgeClass: 'bg-zinc-500/12 text-zinc-300 border-zinc-500/20',
+        dotClass: 'bg-zinc-500',
+        detail: user.loggedOutAt
+          ? `Logged out ${formatRelativeTime(user.loggedOutAt)}`
+          : user.lastLoginAt
+            ? `Last login ${formatRelativeTime(user.lastLoginAt)}`
+            : 'No active session',
+      };
+  }
 }
 
 function formatBtcInr(amount: number): string {
@@ -635,6 +690,9 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
       u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearch.toLowerCase()),
   );
+  const loggedInCount = users.filter((u) => u.presence === 'logged_in').length;
+  const awayCount = users.filter((u) => u.presence === 'away').length;
+  const loggedOutCount = users.filter((u) => (u.presence || 'logged_out') === 'logged_out').length;
 
   return (
     <div className="space-y-6">
@@ -645,6 +703,20 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
             <UserCheck className="size-5 text-amber-500" />
           </h2>
           <p className="text-zinc-500 text-sm mt-1">{users.length} registered users</p>
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/40" />
+              {loggedInCount} live now
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[11px] font-medium text-amber-300">
+              <span className="h-2 w-2 rounded-full bg-amber-400 shadow-sm shadow-amber-400/40" />
+              {awayCount} away
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800/70 px-3 py-1 text-[11px] font-medium text-zinc-300">
+              <span className="h-2 w-2 rounded-full bg-zinc-500" />
+              {loggedOutCount} logged out
+            </div>
+          </div>
         </div>
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
@@ -673,38 +745,67 @@ const UsersTab = memo(function UsersTab({ users, loadingUsers, userSearch, setUs
               <Table>
                 <TableHeader className="sticky top-0 bg-zinc-900 z-10">
                   <TableRow className="border-zinc-800/60 hover:bg-transparent">
-                    <TableHead className="text-zinc-500 text-xs">Name</TableHead>
-                    <TableHead className="text-zinc-500 text-xs">Email</TableHead>
-                    <TableHead className="text-zinc-500 text-xs">Phone</TableHead>
+                    <TableHead className="text-zinc-500 text-xs">User</TableHead>
+                    <TableHead className="text-zinc-500 text-xs">Contact</TableHead>
+                    <TableHead className="text-zinc-500 text-xs">Session</TableHead>
                     <TableHead className="text-zinc-500 text-xs">Joined</TableHead>
                     <TableHead className="text-zinc-500 text-xs text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers.map((u, i) => (
+                  {filteredUsers.map((u, i) => {
+                    const status = getUserPresenceMeta(u);
+
+                    return (
                     <TableRow key={u.id} className={`border-zinc-800/40 ${i % 2 === 0 ? 'bg-transparent' : 'bg-zinc-800/20'} hover:bg-zinc-800/40 transition-colors`}>
-                      <TableCell>
+                      <TableCell className="min-w-[220px]">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm shadow-amber-500/20">
                             {u.name.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-white text-sm font-medium">{u.name}</span>
+                          <div>
+                            <p className="text-white text-sm font-medium">{u.name}</p>
+                            <p className="text-zinc-500 text-xs">{u.email}</p>
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-zinc-400 text-sm">{u.email}</TableCell>
-                      <TableCell className="text-zinc-400 text-sm">{u.phone || '—'}</TableCell>
-                      <TableCell className="text-zinc-500 text-xs">{formatDateShort(u.createdAt)}</TableCell>
+                      <TableCell className="min-w-[220px]">
+                        <div className="space-y-1">
+                          <p className="text-zinc-300 text-sm">{u.email}</p>
+                          <p className="text-zinc-500 text-xs">{u.phone || 'Phone not added'}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-[220px]">
+                        <div className="space-y-2">
+                          <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${status.badgeClass}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${status.dotClass}`} />
+                            {status.label}
+                          </span>
+                          <div className="space-y-0.5">
+                            <p className="text-zinc-400 text-xs">{status.detail}</p>
+                            <p className="text-zinc-600 text-[11px]">
+                              {u.lastLoginAt ? `Last login ${formatRelativeTime(u.lastLoginAt)}` : 'Never logged in'}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-zinc-500 text-xs">
+                        <div className="space-y-0.5">
+                          <p>{formatDateShort(u.createdAt)}</p>
+                          <p className="text-[11px] text-zinc-600">{formatDate(u.createdAt)}</p>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">
                         <button
                           onClick={() => setResetTarget({ id: u.id, name: u.name })}
                           className="p-2 rounded-lg text-zinc-600 hover:text-orange-400 hover:bg-orange-500/10 transition-colors"
-                          title="Force Logout User"
+                          title={u.presence === 'logged_out' ? 'User already logged out' : 'Force Logout User'}
                         >
                           <LogOut className="size-4" />
                         </button>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </Table>
             </div>
