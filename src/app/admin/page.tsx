@@ -158,6 +158,8 @@ interface PaymentProofItem {
   planName: string;
   amount: number;
   screenshotFilename: string;
+  screenshotMimeType?: string | null;
+  screenshotBase64?: string | null;
   status: string;
   adminNote: string | null;
   planData: string;
@@ -2006,6 +2008,17 @@ export default function AdminPage() {
                           <p className="text-zinc-300 text-xs font-mono mt-0.5 truncate max-w-[200px]">{proof.screenshotFilename}</p>
                         </div>
                       </div>
+
+                      {proof.screenshotBase64 && (
+                        <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-3">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-wider mb-2">Screenshot Preview</p>
+                          <img
+                            src={`data:${proof.screenshotMimeType || 'image/jpeg'};base64,${proof.screenshotBase64}`}
+                            alt={`Payment proof for ${proof.userName}`}
+                            className="w-full max-h-[420px] object-contain rounded-lg border border-zinc-700/60 bg-black/30"
+                          />
+                        </div>
+                      )}
 
                       {/* Plan data preview */}
                       {proof.planData && (

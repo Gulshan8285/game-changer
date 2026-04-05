@@ -902,6 +902,12 @@ export default function DashboardScreen() {
       formData.append('screenshot', proofFile);
 
       const res = await fetch('/api/payment-proof', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Upload failed. Please try again.');
+      }
+
       if (res.ok) {
         // ── Auto-send screenshot + info to WhatsApp 8810381949 ──
         const waText = `🆕 *Payment Proof Submitted*\n\n👤 Name: ${user?.name || 'N/A'}\n📱 Phone: ${user?.phone || proofPhone || 'N/A'}\n📧 Email: ${user?.email || 'N/A'}\n📋 Plan: ${pendingPlan?.name || 'N/A'}\n💰 Amount: ₹${(pendingPlan?.investment || 0).toLocaleString('en-IN')}\n🔑 UTR: ${utrNumber.trim()}\n⏰ Time: ${new Date().toLocaleString('en-IN')}`;
@@ -931,8 +937,9 @@ export default function DashboardScreen() {
         setProofFile(null);
         setProofPreview(null);
       }
-    } catch {
-      alert('Upload failed. Please try again.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
+      alert(message);
     }
     setUploadingProof(false);
   };

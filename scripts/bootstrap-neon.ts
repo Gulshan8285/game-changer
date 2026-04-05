@@ -119,12 +119,16 @@ async function main() {
       "planName" TEXT NOT NULL,
       "amount" INTEGER NOT NULL,
       "screenshotFilename" TEXT NOT NULL,
+      "screenshotMimeType" TEXT,
+      "screenshotBase64" TEXT,
       "status" TEXT NOT NULL DEFAULT 'pending',
       "adminNote" TEXT,
       "planData" TEXT NOT NULL,
       "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `ALTER TABLE "PaymentProof" ADD COLUMN IF NOT EXISTS "screenshotMimeType" TEXT`,
+    `ALTER TABLE "PaymentProof" ADD COLUMN IF NOT EXISTS "screenshotBase64" TEXT`,
   ]
 
   for (const statement of statements) {

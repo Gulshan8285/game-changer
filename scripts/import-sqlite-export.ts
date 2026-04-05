@@ -113,6 +113,8 @@ type PaymentProofRecord = {
   planName: string
   amount: number
   screenshotFilename: string
+  screenshotMimeType?: NullableString
+  screenshotBase64?: NullableString
   status: string
   adminNote: NullableString
   planData: string
@@ -319,6 +321,8 @@ async function main() {
         planName: proof.planName,
         amount: proof.amount,
         screenshotFilename: proof.screenshotFilename,
+        screenshotMimeType: proof.screenshotMimeType || null,
+        screenshotBase64: proof.screenshotBase64 || null,
         status: proof.status,
         adminNote: proof.adminNote,
         planData: proof.planData,

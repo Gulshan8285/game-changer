@@ -112,6 +112,8 @@ model PaymentProof {
   planName           String
   amount             Int
   screenshotFilename String
+  screenshotMimeType String?
+  screenshotBase64   String?
   status             String   @default("pending")
   adminNote          String?
   planData           String
