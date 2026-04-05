@@ -375,6 +375,64 @@ const DEFAULT_PLANS = [
   { name: 'Premium', investment: 10000, daily: 1500, monthly: 45000, total: 55000, color: 'bg-purple-500', iconBg: 'bg-purple-500/20', iconColor: 'text-purple-400', btnBg: 'bg-purple-500 hover:bg-purple-600' },
 ];
 
+const getConsumedProofsStorageKey = (userId: string) => `btc-consumed-payment-proofs:${userId}`;
+
+function getPlanSignature(plan: { name?: string; investment?: number; daily?: number; monthly?: number; totalReturn?: number }) {
+  return [
+    plan.name || '',
+    Number(plan.investment || 0),
+    Number(plan.daily || 0),
+    Number(plan.monthly || 0),
+    Number(plan.totalReturn || 0),
+  ].join('::');
+}
+
+function getInvestmentSignature(inv: any) {
+  return getPlanSignature({
+    name: inv.planName,
+    investment: inv.investment,
+    daily: inv.daily,
+    monthly: inv.monthly,
+    totalReturn: inv.totalReturn,
+  });
+}
+
+function getSafeTimestamp(value?: string) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function areSetsEqual(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
+}
+
+function parsePlanFromProof(proof: any) {
+  let planData: any = {};
+  if (proof?.planData) {
+    try {
+      planData = JSON.parse(proof.planData);
+    } catch {
+      planData = {};
+    }
+  }
+
+  return {
+    name: planData.name || proof.planName || '',
+    investment: Number(planData.investment ?? proof.amount ?? 0),
+    daily: Number(planData.daily ?? 0),
+    monthly: Number(planData.monthly ?? 0),
+    totalReturn: Number(planData.totalReturn ?? 0),
+    color: planData.color || 'bg-emerald-500',
+    iconBg: planData.iconBg || 'bg-emerald-500/20',
+    iconColor: planData.iconColor || 'text-emerald-400',
+  };
+}
+
 export default function DashboardScreen() {
   // ── Store & Theme at TOP (fixes stale closure bug) ──
   const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, logout, dashboardView, setDashboardView } = useAppStore();
@@ -395,6 +453,7 @@ export default function DashboardScreen() {
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'verifying' | 'uploading' | 'reviewing' | 'completed' | 'failed' | 'cancelled'>('idle');
   // Track consumed approved proof IDs to avoid re-adding plans
   const [consumedProofs, setConsumedProofs] = useState<Set<string>>(new Set());
+  const [consumedProofsReady, setConsumedProofsReady] = useState(false);
   // Payment proof upload states
   const [proofPhone, setProofPhone] = useState('');
   const [utrNumber, setUtrNumber] = useState('');
@@ -424,6 +483,8 @@ export default function DashboardScreen() {
   timerPausedRef.current = timerPaused;
   const investmentsRef = useRef(investments);
   investmentsRef.current = investments;
+  const consumedProofsRef = useRef(consumedProofs);
+  consumedProofsRef.current = consumedProofs;
   const transactionsRef = useRef(transactions);
   transactionsRef.current = transactions;
 
@@ -459,6 +520,32 @@ export default function DashboardScreen() {
     }
     setInvestmentsReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setConsumedProofs(new Set());
+      setConsumedProofsReady(false);
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem(getConsumedProofsStorageKey(user.id));
+      if (!saved) {
+        setConsumedProofs(new Set());
+      } else {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setConsumedProofs(new Set(parsed.filter((value): value is string => typeof value === 'string')));
+        } else {
+          setConsumedProofs(new Set());
+        }
+      }
+    } catch {
+      setConsumedProofs(new Set());
+    }
+
+    setConsumedProofsReady(true);
+  }, [user?.id]);
 
   // ── Fetch admin notifications from API + poll every 30s ──
   // Also checks if admin has force-logged-out this user
@@ -598,60 +685,157 @@ export default function DashboardScreen() {
     localStorage.setItem('btc-timer-paused', String(timerPaused));
   }, [timerPaused]);
 
+  useEffect(() => {
+    if (!user?.id || !consumedProofsReady) return;
+    localStorage.setItem(
+      getConsumedProofsStorageKey(user.id),
+      JSON.stringify(Array.from(consumedProofs))
+    );
+  }, [user?.id, consumedProofs, consumedProofsReady]);
+
   // ── Check for admin-approved payment proofs every 30 seconds ──
   // When admin approves, auto-add the plan to user's account
   useEffect(() => {
-    if (!user?.id || !investmentsReady) return;
+    if (!user?.id || !investmentsReady || !consumedProofsReady) return;
 
     const checkApprovedProofs = async () => {
       try {
         const res = await fetch(`/api/payment-proof?userId=${user.id}`);
         if (!res.ok) return;
         const data = await res.json();
-        if (!data.success || !data.proofs?.length) return;
+        if (!data.success) return;
 
-        for (const proof of data.proofs) {
-          // Skip already consumed proofs
-          if (consumedProofs.has(proof.id)) continue;
+        const proofs = Array.isArray(data.proofs) ? data.proofs : [];
+        const currentInvestments = investmentsRef.current;
+        const currentConsumed = consumedProofsRef.current;
+        const nextConsumed = new Set(currentConsumed);
+        const updatedInvestmentsById = new Map(currentInvestments.map((investment) => [investment.id, { ...investment }]));
+        const removeInvestmentIds = new Set<any>();
+        const proofGroups = new Map<string, Array<{ proof: any; planData: ReturnType<typeof parsePlanFromProof> }>>();
+        const investmentsToAdd: any[] = [];
+        const transactionsToAdd: any[] = [];
+        const notificationsToAdd: any[] = [];
+        let investmentsChanged = false;
 
-          // Parse plan data from the proof
-          let planData: any = {};
-          try {
-            planData = JSON.parse(proof.planData);
-          } catch { continue; }
+        for (const proof of proofs) {
+          const planData = parsePlanFromProof(proof);
+          if (!planData.name) continue;
 
-          // Add the plan to user's investments
-          const newInvestment = {
-            id: Date.now() + Math.random(),
-            planName: planData.name || proof.planName,
-            investment: planData.investment || proof.amount,
-            daily: planData.daily || 0,
-            monthly: planData.monthly || 0,
-            totalReturn: planData.totalReturn || 0,
-            date: new Date().toLocaleDateString('en-IN'),
-            earned: 0,
-            color: planData.color || 'bg-emerald-500',
-            iconColor: planData.iconColor || 'text-emerald-400',
-            iconBg: planData.iconBg || 'bg-emerald-500/20',
-            status: 'active',
-            createdAt: new Date().toISOString(),
-            lastEarningAt: new Date().toISOString(),
-          };
-          saveInvestments([...investmentsRef.current, newInvestment]);
+          const signature = getPlanSignature(planData);
+          const group = proofGroups.get(signature) || [];
+          group.push({ proof, planData });
+          proofGroups.set(signature, group);
+        }
 
-          // Record transaction
-          const tx = { id: Date.now() + Math.random(), type: 'invest', planName: newInvestment.planName, amount: newInvestment.investment, date: new Date().toLocaleString('en-IN'), desc: `${newInvestment.planName} Plan - Approved by Admin` };
-          const newTxs = [tx, ...transactionsRef.current];
-          setTransactions(newTxs);
-          localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
+        for (const [signature, entries] of proofGroups.entries()) {
+          const matchingInvestments = currentInvestments
+            .filter((investment) => getInvestmentSignature(investment) === signature)
+            .sort((a, b) => getSafeTimestamp(a.createdAt) - getSafeTimestamp(b.createdAt));
+          const sortedEntries = [...entries].sort(
+            (a, b) => getSafeTimestamp(a.proof.createdAt) - getSafeTimestamp(b.proof.createdAt)
+          );
+          const matchedCount = Math.min(matchingInvestments.length, sortedEntries.length);
 
-          // Add notification
-          const notif = { id: Date.now() + 1, icon: 'CheckCircle2', title: '🎉 Plan Approved & Activated!', desc: `${newInvestment.planName} Plan (₹${newInvestment.investment.toLocaleString('en-IN')}) has been approved by admin`, time: 'Just now', dot: 'bg-emerald-500', read: false };
-          setNotifications(prev => { const n = [notif, ...prev]; localStorage.setItem('btc-notifications', JSON.stringify(n)); return n; });
+          for (let index = 0; index < matchedCount; index++) {
+            const investment = updatedInvestmentsById.get(matchingInvestments[index].id) || { ...matchingInvestments[index] };
+            const proofId = sortedEntries[index].proof.id;
+            nextConsumed.add(proofId);
 
-          // Mark as consumed
-          setConsumedProofs(prev => new Set([...prev, proof.id]));
-          console.log(`[APPROVED] Plan added for proof ${proof.id}: ${newInvestment.planName}`);
+            if (investment.sourceProofId !== proofId) {
+              updatedInvestmentsById.set(investment.id, { ...investment, sourceProofId: proofId });
+              investmentsChanged = true;
+            }
+          }
+
+          for (let index = matchedCount; index < matchingInvestments.length; index++) {
+            removeInvestmentIds.add(matchingInvestments[index].id);
+            investmentsChanged = true;
+          }
+
+          for (let index = matchedCount; index < sortedEntries.length; index++) {
+            const entry = sortedEntries[index];
+            const proofId = entry.proof.id;
+
+            if (currentConsumed.has(proofId)) {
+              // Already activated once on this device; don't resurrect a cancelled plan.
+              nextConsumed.add(proofId);
+              continue;
+            }
+
+            const now = new Date();
+            const nowIso = now.toISOString();
+            const newInvestment = {
+              id: Date.now() + Math.random() + index,
+              sourceProofId: proofId,
+              planName: entry.planData.name,
+              investment: entry.planData.investment,
+              daily: entry.planData.daily,
+              monthly: entry.planData.monthly,
+              totalReturn: entry.planData.totalReturn,
+              date: now.toLocaleDateString('en-IN'),
+              earned: 0,
+              color: entry.planData.color,
+              iconColor: entry.planData.iconColor,
+              iconBg: entry.planData.iconBg,
+              status: 'active',
+              createdAt: nowIso,
+              lastEarningAt: nowIso,
+            };
+
+            investmentsToAdd.push(newInvestment);
+            nextConsumed.add(proofId);
+            investmentsChanged = true;
+
+            transactionsToAdd.push({
+              id: Date.now() + Math.random() + index + 100,
+              type: 'invest',
+              planName: newInvestment.planName,
+              amount: newInvestment.investment,
+              date: now.toLocaleString('en-IN'),
+              desc: `${newInvestment.planName} Plan - Approved by Admin`,
+            });
+
+            notificationsToAdd.push({
+              id: Date.now() + Math.random() + index + 200,
+              icon: 'CheckCircle2',
+              title: '🎉 Plan Approved & Activated!',
+              desc: `${newInvestment.planName} Plan (₹${newInvestment.investment.toLocaleString('en-IN')}) has been approved by admin`,
+              time: 'Just now',
+              dot: 'bg-emerald-500',
+              read: false,
+            });
+
+            console.log(`[APPROVED] Plan added for proof ${proofId}: ${newInvestment.planName}`);
+          }
+        }
+
+        const normalizedInvestments = currentInvestments
+          .filter((investment) => !removeInvestmentIds.has(investment.id))
+          .map((investment) => updatedInvestmentsById.get(investment.id) || investment);
+        const finalInvestments = investmentsToAdd.length > 0
+          ? [...normalizedInvestments, ...investmentsToAdd]
+          : normalizedInvestments;
+
+        if (investmentsChanged) {
+          saveInvestments(finalInvestments);
+        }
+
+        if (transactionsToAdd.length > 0) {
+          const nextTransactions = [...transactionsToAdd, ...transactionsRef.current];
+          setTransactions(nextTransactions);
+          localStorage.setItem('btc-transactions', JSON.stringify(nextTransactions));
+        }
+
+        if (notificationsToAdd.length > 0) {
+          setNotifications((prev) => {
+            const nextNotifications = [...notificationsToAdd, ...prev];
+            localStorage.setItem('btc-notifications', JSON.stringify(nextNotifications));
+            return nextNotifications;
+          });
+        }
+
+        if (!areSetsEqual(currentConsumed, nextConsumed)) {
+          setConsumedProofs(nextConsumed);
         }
       } catch { /* silent */ }
     };
@@ -662,7 +846,7 @@ export default function DashboardScreen() {
     // Then check every 30 seconds
     const interval = setInterval(checkApprovedProofs, 30000);
     return () => clearInterval(interval);
-  }, [user?.id, investmentsReady, consumedProofs]);
+  }, [user?.id, investmentsReady, consumedProofsReady]);
 
   // Handle pause/resume with proper time adjustment
   const toggleTimerPause = useCallback(() => {
