@@ -291,6 +291,7 @@ const CONTENT_SECTIONS = [
     keys: [
       { key: 'dashboard_welcome_text', label: 'Welcome Message', type: 'input' as const, placeholder: 'Welcome back' },
       { key: 'dashboard_top_gainers_title', label: 'Top Gainers Section Title', type: 'input' as const, placeholder: 'Top Gainers' },
+      { key: 'minimum_withdrawal_amount', label: 'Minimum Withdrawal Amount', type: 'input' as const, placeholder: '500' },
     ]
   },
   {

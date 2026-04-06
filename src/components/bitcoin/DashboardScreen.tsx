@@ -433,6 +433,8 @@ function parsePlanFromProof(proof: any) {
   };
 }
 
+type UpiLaunchTarget = 'generic' | 'gpay';
+
 export default function DashboardScreen() {
   // ── Store & Theme at TOP (fixes stale closure bug) ──
   const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, logout, dashboardView, setDashboardView } = useAppStore();
@@ -462,6 +464,7 @@ export default function DashboardScreen() {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [upiId, setUpiId] = useState('gulshanyadav62000-6@okicici');
   const [upiName, setUpiName] = useState('Gulshan Yadav');
+  const [isAndroidDevice, setIsAndroidDevice] = useState(false);
   // showWallet/showHistory removed — now using store's dashboardView
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -492,6 +495,10 @@ export default function DashboardScreen() {
     setInvestments(items);
     localStorage.setItem('btc-wallet-investments', JSON.stringify(items));
   };
+
+  useEffect(() => {
+    setIsAndroidDevice(/Android/i.test(navigator.userAgent || ''));
+  }, []);
 
   // Load all data from localStorage
   useEffect(() => {
@@ -1007,7 +1014,7 @@ export default function DashboardScreen() {
     }, 800);
   }, [investmentsRef, transactionsRef, user]);
 
-  const handleInvest = async () => {
+  const handleInvest = async (target: UpiLaunchTarget = 'generic') => {
     if (!selectedPlan || investing) return;
 
     setInvesting(true);
@@ -1017,20 +1024,29 @@ export default function DashboardScreen() {
     setPaymentStatus('opened');
     setInvesting(false);
 
-    // ── Always use UPI deep link for all plans ──
-    const amount = planData.investment.toFixed(2);
+    // Keep the UPI payload simple so Google Pay and generic UPI apps both accept it.
+    const amount = Number(planData.investment || 0).toFixed(2);
     const txnRef = `BTC${Date.now()}`;
     const upiParams = new URLSearchParams({
       pa: upiId,
       pn: upiName || 'Dhan Kamao',
       am: amount,
       cu: 'INR',
-      tn: `${planData.name} Plan - ₹${planData.investment}`,
+      tn: `${planData.name} Plan Payment`,
       tr: txnRef,
-      mode: '00',
     });
     try {
-      window.location.href = `upi://pay?${upiParams.toString()}`;
+      const genericLink = `upi://pay?${upiParams.toString()}`;
+      if (target === 'gpay') {
+        window.location.href = `gpay://upi/pay?${upiParams.toString()}`;
+        window.setTimeout(() => {
+          if (document.visibilityState === 'visible') {
+            window.location.href = genericLink;
+          }
+        }, 900);
+      } else {
+        window.location.href = genericLink;
+      }
     } catch { /* silent */ }
 
     setPaymentStatus('waiting');
@@ -1311,6 +1327,14 @@ export default function DashboardScreen() {
   const totalInvested = useMemo(() => investments.reduce((s, i) => s + i.investment, 0), [investments]);
   const totalEarned = useMemo(() => investments.reduce((s, i) => s + i.earned, 0), [investments]);
   const availableBalance = useMemo(() => Math.max(0, totalEarned - withdrawnTotal), [totalEarned, withdrawnTotal]);
+  const minimumWithdrawal = useMemo(() => {
+    const rawValue = Number(siteContent.minimum_withdrawal_amount || 500);
+    return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : 500;
+  }, [siteContent.minimum_withdrawal_amount]);
+  const quickWithdrawalAmounts = useMemo(() => {
+    const base = Math.max(1, Math.ceil(minimumWithdrawal));
+    return [base, base * 2, base * 4, base * 10];
+  }, [minimumWithdrawal]);
   const dailyProfit = useMemo(() => investments.reduce((s, i) => s + i.daily, 0), [investments]);
   const unreadNotifCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
@@ -1916,19 +1940,53 @@ export default function DashboardScreen() {
                         <p className="text-[11px] text-zinc-400">Amount will be auto-filled — ₹{selectedPlan.investment.toLocaleString('en-IN')} will be sent to <span className="text-amber-400 font-semibold">{upiName || 'Gulshan Yadav'}</span></p>
                       </div>
                       <div className="space-y-3">
-                        <button onClick={handleInvest} disabled={investing} className={`w-full py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
-                          {investing ? (
-                            <div className="flex items-center justify-center gap-2">
-                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                              Opening UPI...
+                        {isAndroidDevice ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-3">
+                              <button onClick={() => handleInvest('gpay')} disabled={investing} className={`py-3.5 rounded-xl bg-white text-zinc-900 font-semibold transition-all duration-200 active:scale-[0.98] ${investing ? 'opacity-60' : ''}`}>
+                                {investing ? (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-zinc-300 border-t-zinc-900 rounded-full animate-spin" />
+                                    Opening...
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <span>Google Pay</span>
+                                    <ArrowUpRight className="w-4 h-4" />
+                                  </div>
+                                )}
+                              </button>
+                              <button onClick={() => handleInvest('generic')} disabled={investing} className={`py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
+                                {investing ? (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Opening...
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <span>Other UPI</span>
+                                    <ArrowUpRight className="w-4 h-4" />
+                                  </div>
+                                )}
+                              </button>
                             </div>
-                          ) : (
-                            <div className="flex items-center justify-center gap-2">
-                              <span>Pay ₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
-                              <ArrowUpRight className="w-4 h-4" />
-                            </div>
-                          )}
-                        </button>
+                            <p className="text-[10px] text-zinc-500 text-center">Google Pay users tap Google Pay. PhonePe, Paytm aur dusre apps ke liye Other UPI use karein.</p>
+                          </>
+                        ) : (
+                          <button onClick={() => handleInvest('generic')} disabled={investing} className={`w-full py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
+                            {investing ? (
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Opening UPI...
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-2">
+                                <span>Pay ₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
+                                <ArrowUpRight className="w-4 h-4" />
+                              </div>
+                            )}
+                          </button>
+                        )}
                         <button onClick={() => { setSelectedPlan(null); setPaymentStatus('idle'); }} className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors text-sm font-medium">
                           Cancel
                         </button>
@@ -2741,7 +2799,7 @@ export default function DashboardScreen() {
                 </div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm text-zinc-500">Min. Withdrawal</span>
-                  <span className="text-sm font-medium text-zinc-900 dark:text-white">₹500</span>
+                  <span className="text-sm font-medium text-zinc-900 dark:text-white">₹{minimumWithdrawal.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
@@ -2757,11 +2815,14 @@ export default function DashboardScreen() {
                 {withdrawAmount && Number(withdrawAmount) > availableBalance && (
                   <p className="text-[11px] text-red-400 mt-1">Amount exceeds available balance</p>
                 )}
+                {withdrawAmount && Number(withdrawAmount) < minimumWithdrawal && (
+                  <p className="text-[11px] text-red-400 mt-1">Minimum withdrawal is ₹{minimumWithdrawal.toLocaleString('en-IN')}</p>
+                )}
               </div>
 
               {/* Quick amounts */}
               <div className="flex gap-2 mb-4">
-                {[500, 1000, 2000, 5000].map((amt) => (
+                {quickWithdrawalAmounts.map((amt) => (
                   <button key={amt} onClick={() => setWithdrawAmount(String(amt))} className="flex-1 py-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all">
                     ₹{amt.toLocaleString('en-IN')}
                   </button>
@@ -2770,7 +2831,7 @@ export default function DashboardScreen() {
 
               <button
                 onClick={async () => {
-                  if (!withdrawAmount || Number(withdrawAmount) < 500) return;
+                  if (!withdrawAmount || Number(withdrawAmount) < minimumWithdrawal) return;
                   const wAmt = Number(withdrawAmount);
                   setWithdrawing(true);
                   await new Promise((r) => setTimeout(r, 2500));
@@ -2796,7 +2857,7 @@ export default function DashboardScreen() {
                   setWithdrawSuccess(true);
                   setTimeout(() => setWithdrawSuccess(false), 3000);
                 }}
-                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < 500 || Number(withdrawAmount) > availableBalance}
+                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < minimumWithdrawal || Number(withdrawAmount) > availableBalance}
                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {withdrawing ? (
