@@ -291,7 +291,6 @@ const CONTENT_SECTIONS = [
     keys: [
       { key: 'dashboard_welcome_text', label: 'Welcome Message', type: 'input' as const, placeholder: 'Welcome back' },
       { key: 'dashboard_top_gainers_title', label: 'Top Gainers Section Title', type: 'input' as const, placeholder: 'Top Gainers' },
-      { key: 'minimum_withdrawal_amount', label: 'Minimum Withdrawal Amount', type: 'input' as const, placeholder: '500' },
     ]
   },
   {
@@ -329,6 +328,13 @@ const CONTENT_SECTIONS = [
     keys: [
       { key: 'upi_id', label: 'UPI ID', type: 'input' as const, placeholder: 'gulshanyadav62000-6@okicici' },
       { key: 'upi_name', label: 'UPI Display Name', type: 'input' as const, placeholder: 'Gulshan Yadav' },
+    ]
+  },
+  {
+    title: 'Withdrawal Settings',
+    description: 'Configure user withdrawal rules shown in the app',
+    keys: [
+      { key: 'minimum_withdrawal_amount', label: 'Minimum Withdrawal Amount', type: 'input' as const, placeholder: '500' },
     ]
   },
   {
@@ -573,6 +579,8 @@ const ContentTab = memo(function ContentTab({ siteContent, setSiteContent, conte
     'About Us - Values': <Zap className="size-4" />,
     'About Us - Statistics': <Activity className="size-4" />,
     'Social Media Links': <Link2 className="size-4" />,
+    'UPI Payment Settings': <Wallet className="size-4" />,
+    'Withdrawal Settings': <ArrowUpCircle className="size-4" />,
     'Policy Last Updated Dates': <Calendar className="size-4" />,
   };
 
@@ -587,7 +595,7 @@ const ContentTab = memo(function ContentTab({ siteContent, setSiteContent, conte
       </div>
 
       {/* Page Navigation Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="flex flex-wrap gap-2">
         {CONTENT_SECTIONS.map((section, idx) => (
           <button
             key={section.title}
