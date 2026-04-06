@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -26,6 +27,10 @@ model User {
   termsAccepted Boolean  @default(false)
   isGoogleAuth  Boolean  @default(false)
   forceLogoutAt DateTime?
+  sessionStatus String   @default("logged_out")
+  lastLoginAt   DateTime?
+  lastSeenAt    DateTime?
+  loggedOutAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -111,6 +116,8 @@ model PaymentProof {
   planName           String
   amount             Int
   screenshotFilename String
+  screenshotMimeType String?
+  screenshotBase64   String?
   status             String   @default("pending")
   adminNote          String?
   planData           String

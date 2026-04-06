@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
-
 export async function GET() {
   try {
-    const plans = await rawQuery(
-      "SELECT * FROM InvestmentPlan WHERE isActive = 1 ORDER BY sortOrder ASC"
-    ) as any[]
+    const plans = await db.investmentPlan.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
 
     return NextResponse.json({ success: true, plans })
   } catch (error) {

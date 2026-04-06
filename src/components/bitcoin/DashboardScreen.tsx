@@ -375,6 +375,66 @@ const DEFAULT_PLANS = [
   { name: 'Premium', investment: 10000, daily: 1500, monthly: 45000, total: 55000, color: 'bg-purple-500', iconBg: 'bg-purple-500/20', iconColor: 'text-purple-400', btnBg: 'bg-purple-500 hover:bg-purple-600' },
 ];
 
+const getConsumedProofsStorageKey = (userId: string) => `btc-consumed-payment-proofs:${userId}`;
+
+function getPlanSignature(plan: { name?: string; investment?: number; daily?: number; monthly?: number; totalReturn?: number }) {
+  return [
+    plan.name || '',
+    Number(plan.investment || 0),
+    Number(plan.daily || 0),
+    Number(plan.monthly || 0),
+    Number(plan.totalReturn || 0),
+  ].join('::');
+}
+
+function getInvestmentSignature(inv: any) {
+  return getPlanSignature({
+    name: inv.planName,
+    investment: inv.investment,
+    daily: inv.daily,
+    monthly: inv.monthly,
+    totalReturn: inv.totalReturn,
+  });
+}
+
+function getSafeTimestamp(value?: string) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function areSetsEqual(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
+}
+
+function parsePlanFromProof(proof: any) {
+  let planData: any = {};
+  if (proof?.planData) {
+    try {
+      planData = JSON.parse(proof.planData);
+    } catch {
+      planData = {};
+    }
+  }
+
+  return {
+    name: planData.name || proof.planName || '',
+    investment: Number(planData.investment ?? proof.amount ?? 0),
+    daily: Number(planData.daily ?? 0),
+    monthly: Number(planData.monthly ?? 0),
+    totalReturn: Number(planData.totalReturn ?? 0),
+    color: planData.color || 'bg-emerald-500',
+    iconBg: planData.iconBg || 'bg-emerald-500/20',
+    iconColor: planData.iconColor || 'text-emerald-400',
+  };
+}
+
+type UpiLaunchTarget = 'generic' | 'gpay';
+
 export default function DashboardScreen() {
   // ── Store & Theme at TOP (fixes stale closure bug) ──
   const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, logout, dashboardView, setDashboardView } = useAppStore();
@@ -395,6 +455,7 @@ export default function DashboardScreen() {
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'opened' | 'waiting' | 'verifying' | 'uploading' | 'reviewing' | 'completed' | 'failed' | 'cancelled'>('idle');
   // Track consumed approved proof IDs to avoid re-adding plans
   const [consumedProofs, setConsumedProofs] = useState<Set<string>>(new Set());
+  const [consumedProofsReady, setConsumedProofsReady] = useState(false);
   // Payment proof upload states
   const [proofPhone, setProofPhone] = useState('');
   const [utrNumber, setUtrNumber] = useState('');
@@ -403,6 +464,7 @@ export default function DashboardScreen() {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [upiId, setUpiId] = useState('gulshanyadav62000-6@okicici');
   const [upiName, setUpiName] = useState('Gulshan Yadav');
+  const [isAndroidDevice, setIsAndroidDevice] = useState(false);
   // showWallet/showHistory removed — now using store's dashboardView
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -424,6 +486,8 @@ export default function DashboardScreen() {
   timerPausedRef.current = timerPaused;
   const investmentsRef = useRef(investments);
   investmentsRef.current = investments;
+  const consumedProofsRef = useRef(consumedProofs);
+  consumedProofsRef.current = consumedProofs;
   const transactionsRef = useRef(transactions);
   transactionsRef.current = transactions;
 
@@ -431,6 +495,10 @@ export default function DashboardScreen() {
     setInvestments(items);
     localStorage.setItem('btc-wallet-investments', JSON.stringify(items));
   };
+
+  useEffect(() => {
+    setIsAndroidDevice(/Android/i.test(navigator.userAgent || ''));
+  }, []);
 
   // Load all data from localStorage
   useEffect(() => {
@@ -460,6 +528,32 @@ export default function DashboardScreen() {
     setInvestmentsReady(true);
   }, []);
 
+  useEffect(() => {
+    if (!user?.id) {
+      setConsumedProofs(new Set());
+      setConsumedProofsReady(false);
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem(getConsumedProofsStorageKey(user.id));
+      if (!saved) {
+        setConsumedProofs(new Set());
+      } else {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setConsumedProofs(new Set(parsed.filter((value): value is string => typeof value === 'string')));
+        } else {
+          setConsumedProofs(new Set());
+        }
+      }
+    } catch {
+      setConsumedProofs(new Set());
+    }
+
+    setConsumedProofsReady(true);
+  }, [user?.id]);
+
   // ── Fetch admin notifications from API + poll every 30s ──
   // Also checks if admin has force-logged-out this user
   useEffect(() => {
@@ -474,6 +568,13 @@ export default function DashboardScreen() {
 
           // Check if admin has force-logged-out this user
           if (data.forceLogout) {
+            if (userId) {
+              fetch('/api/auth/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, action: 'logout' }),
+              }).catch(() => {});
+            }
             logout(); // Clear session and redirect to login
             return;
           }
@@ -598,60 +699,157 @@ export default function DashboardScreen() {
     localStorage.setItem('btc-timer-paused', String(timerPaused));
   }, [timerPaused]);
 
+  useEffect(() => {
+    if (!user?.id || !consumedProofsReady) return;
+    localStorage.setItem(
+      getConsumedProofsStorageKey(user.id),
+      JSON.stringify(Array.from(consumedProofs))
+    );
+  }, [user?.id, consumedProofs, consumedProofsReady]);
+
   // ── Check for admin-approved payment proofs every 30 seconds ──
   // When admin approves, auto-add the plan to user's account
   useEffect(() => {
-    if (!user?.id || !investmentsReady) return;
+    if (!user?.id || !investmentsReady || !consumedProofsReady) return;
 
     const checkApprovedProofs = async () => {
       try {
         const res = await fetch(`/api/payment-proof?userId=${user.id}`);
         if (!res.ok) return;
         const data = await res.json();
-        if (!data.success || !data.proofs?.length) return;
+        if (!data.success) return;
 
-        for (const proof of data.proofs) {
-          // Skip already consumed proofs
-          if (consumedProofs.has(proof.id)) continue;
+        const proofs = Array.isArray(data.proofs) ? data.proofs : [];
+        const currentInvestments = investmentsRef.current;
+        const currentConsumed = consumedProofsRef.current;
+        const nextConsumed = new Set(currentConsumed);
+        const updatedInvestmentsById = new Map(currentInvestments.map((investment) => [investment.id, { ...investment }]));
+        const removeInvestmentIds = new Set<any>();
+        const proofGroups = new Map<string, Array<{ proof: any; planData: ReturnType<typeof parsePlanFromProof> }>>();
+        const investmentsToAdd: any[] = [];
+        const transactionsToAdd: any[] = [];
+        const notificationsToAdd: any[] = [];
+        let investmentsChanged = false;
 
-          // Parse plan data from the proof
-          let planData: any = {};
-          try {
-            planData = JSON.parse(proof.planData);
-          } catch { continue; }
+        for (const proof of proofs) {
+          const planData = parsePlanFromProof(proof);
+          if (!planData.name) continue;
 
-          // Add the plan to user's investments
-          const newInvestment = {
-            id: Date.now() + Math.random(),
-            planName: planData.name || proof.planName,
-            investment: planData.investment || proof.amount,
-            daily: planData.daily || 0,
-            monthly: planData.monthly || 0,
-            totalReturn: planData.totalReturn || 0,
-            date: new Date().toLocaleDateString('en-IN'),
-            earned: 0,
-            color: planData.color || 'bg-emerald-500',
-            iconColor: planData.iconColor || 'text-emerald-400',
-            iconBg: planData.iconBg || 'bg-emerald-500/20',
-            status: 'active',
-            createdAt: new Date().toISOString(),
-            lastEarningAt: new Date().toISOString(),
-          };
-          saveInvestments([...investmentsRef.current, newInvestment]);
+          const signature = getPlanSignature(planData);
+          const group = proofGroups.get(signature) || [];
+          group.push({ proof, planData });
+          proofGroups.set(signature, group);
+        }
 
-          // Record transaction
-          const tx = { id: Date.now() + Math.random(), type: 'invest', planName: newInvestment.planName, amount: newInvestment.investment, date: new Date().toLocaleString('en-IN'), desc: `${newInvestment.planName} Plan - Approved by Admin` };
-          const newTxs = [tx, ...transactionsRef.current];
-          setTransactions(newTxs);
-          localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
+        for (const [signature, entries] of proofGroups.entries()) {
+          const matchingInvestments = currentInvestments
+            .filter((investment) => getInvestmentSignature(investment) === signature)
+            .sort((a, b) => getSafeTimestamp(a.createdAt) - getSafeTimestamp(b.createdAt));
+          const sortedEntries = [...entries].sort(
+            (a, b) => getSafeTimestamp(a.proof.createdAt) - getSafeTimestamp(b.proof.createdAt)
+          );
+          const matchedCount = Math.min(matchingInvestments.length, sortedEntries.length);
 
-          // Add notification
-          const notif = { id: Date.now() + 1, icon: 'CheckCircle2', title: '🎉 Plan Approved & Activated!', desc: `${newInvestment.planName} Plan (₹${newInvestment.investment.toLocaleString('en-IN')}) has been approved by admin`, time: 'Just now', dot: 'bg-emerald-500', read: false };
-          setNotifications(prev => { const n = [notif, ...prev]; localStorage.setItem('btc-notifications', JSON.stringify(n)); return n; });
+          for (let index = 0; index < matchedCount; index++) {
+            const investment = updatedInvestmentsById.get(matchingInvestments[index].id) || { ...matchingInvestments[index] };
+            const proofId = sortedEntries[index].proof.id;
+            nextConsumed.add(proofId);
 
-          // Mark as consumed
-          setConsumedProofs(prev => new Set([...prev, proof.id]));
-          console.log(`[APPROVED] Plan added for proof ${proof.id}: ${newInvestment.planName}`);
+            if (investment.sourceProofId !== proofId) {
+              updatedInvestmentsById.set(investment.id, { ...investment, sourceProofId: proofId });
+              investmentsChanged = true;
+            }
+          }
+
+          for (let index = matchedCount; index < matchingInvestments.length; index++) {
+            removeInvestmentIds.add(matchingInvestments[index].id);
+            investmentsChanged = true;
+          }
+
+          for (let index = matchedCount; index < sortedEntries.length; index++) {
+            const entry = sortedEntries[index];
+            const proofId = entry.proof.id;
+
+            if (currentConsumed.has(proofId)) {
+              // Already activated once on this device; don't resurrect a cancelled plan.
+              nextConsumed.add(proofId);
+              continue;
+            }
+
+            const now = new Date();
+            const nowIso = now.toISOString();
+            const newInvestment = {
+              id: Date.now() + Math.random() + index,
+              sourceProofId: proofId,
+              planName: entry.planData.name,
+              investment: entry.planData.investment,
+              daily: entry.planData.daily,
+              monthly: entry.planData.monthly,
+              totalReturn: entry.planData.totalReturn,
+              date: now.toLocaleDateString('en-IN'),
+              earned: 0,
+              color: entry.planData.color,
+              iconColor: entry.planData.iconColor,
+              iconBg: entry.planData.iconBg,
+              status: 'active',
+              createdAt: nowIso,
+              lastEarningAt: nowIso,
+            };
+
+            investmentsToAdd.push(newInvestment);
+            nextConsumed.add(proofId);
+            investmentsChanged = true;
+
+            transactionsToAdd.push({
+              id: Date.now() + Math.random() + index + 100,
+              type: 'invest',
+              planName: newInvestment.planName,
+              amount: newInvestment.investment,
+              date: now.toLocaleString('en-IN'),
+              desc: `${newInvestment.planName} Plan - Approved by Admin`,
+            });
+
+            notificationsToAdd.push({
+              id: Date.now() + Math.random() + index + 200,
+              icon: 'CheckCircle2',
+              title: '🎉 Plan Approved & Activated!',
+              desc: `${newInvestment.planName} Plan (₹${newInvestment.investment.toLocaleString('en-IN')}) has been approved by admin`,
+              time: 'Just now',
+              dot: 'bg-emerald-500',
+              read: false,
+            });
+
+            console.log(`[APPROVED] Plan added for proof ${proofId}: ${newInvestment.planName}`);
+          }
+        }
+
+        const normalizedInvestments = currentInvestments
+          .filter((investment) => !removeInvestmentIds.has(investment.id))
+          .map((investment) => updatedInvestmentsById.get(investment.id) || investment);
+        const finalInvestments = investmentsToAdd.length > 0
+          ? [...normalizedInvestments, ...investmentsToAdd]
+          : normalizedInvestments;
+
+        if (investmentsChanged) {
+          saveInvestments(finalInvestments);
+        }
+
+        if (transactionsToAdd.length > 0) {
+          const nextTransactions = [...transactionsToAdd, ...transactionsRef.current];
+          setTransactions(nextTransactions);
+          localStorage.setItem('btc-transactions', JSON.stringify(nextTransactions));
+        }
+
+        if (notificationsToAdd.length > 0) {
+          setNotifications((prev) => {
+            const nextNotifications = [...notificationsToAdd, ...prev];
+            localStorage.setItem('btc-notifications', JSON.stringify(nextNotifications));
+            return nextNotifications;
+          });
+        }
+
+        if (!areSetsEqual(currentConsumed, nextConsumed)) {
+          setConsumedProofs(nextConsumed);
         }
       } catch { /* silent */ }
     };
@@ -662,7 +860,7 @@ export default function DashboardScreen() {
     // Then check every 30 seconds
     const interval = setInterval(checkApprovedProofs, 30000);
     return () => clearInterval(interval);
-  }, [user?.id, investmentsReady, consumedProofs]);
+  }, [user?.id, investmentsReady, consumedProofsReady]);
 
   // Handle pause/resume with proper time adjustment
   const toggleTimerPause = useCallback(() => {
@@ -816,7 +1014,7 @@ export default function DashboardScreen() {
     }, 800);
   }, [investmentsRef, transactionsRef, user]);
 
-  const handleInvest = async () => {
+  const handleInvest = async (target: UpiLaunchTarget = 'generic') => {
     if (!selectedPlan || investing) return;
 
     setInvesting(true);
@@ -826,20 +1024,29 @@ export default function DashboardScreen() {
     setPaymentStatus('opened');
     setInvesting(false);
 
-    // ── Always use UPI deep link for all plans ──
-    const amount = planData.investment.toFixed(2);
+    // Keep the UPI payload simple so Google Pay and generic UPI apps both accept it.
+    const amount = Number(planData.investment || 0).toFixed(2);
     const txnRef = `BTC${Date.now()}`;
     const upiParams = new URLSearchParams({
       pa: upiId,
       pn: upiName || 'Dhan Kamao',
       am: amount,
       cu: 'INR',
-      tn: `${planData.name} Plan - ₹${planData.investment}`,
+      tn: `${planData.name} Plan Payment`,
       tr: txnRef,
-      mode: '00',
     });
     try {
-      window.location.href = `upi://pay?${upiParams.toString()}`;
+      const genericLink = `upi://pay?${upiParams.toString()}`;
+      if (target === 'gpay') {
+        window.location.href = `gpay://upi/pay?${upiParams.toString()}`;
+        window.setTimeout(() => {
+          if (document.visibilityState === 'visible') {
+            window.location.href = genericLink;
+          }
+        }, 900);
+      } else {
+        window.location.href = genericLink;
+      }
     } catch { /* silent */ }
 
     setPaymentStatus('waiting');
@@ -902,6 +1109,12 @@ export default function DashboardScreen() {
       formData.append('screenshot', proofFile);
 
       const res = await fetch('/api/payment-proof', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Upload failed. Please try again.');
+      }
+
       if (res.ok) {
         // ── Auto-send screenshot + info to WhatsApp 8810381949 ──
         const waText = `🆕 *Payment Proof Submitted*\n\n👤 Name: ${user?.name || 'N/A'}\n📱 Phone: ${user?.phone || proofPhone || 'N/A'}\n📧 Email: ${user?.email || 'N/A'}\n📋 Plan: ${pendingPlan?.name || 'N/A'}\n💰 Amount: ₹${(pendingPlan?.investment || 0).toLocaleString('en-IN')}\n🔑 UTR: ${utrNumber.trim()}\n⏰ Time: ${new Date().toLocaleString('en-IN')}`;
@@ -931,8 +1144,9 @@ export default function DashboardScreen() {
         setProofFile(null);
         setProofPreview(null);
       }
-    } catch {
-      alert('Upload failed. Please try again.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed. Please try again.';
+      alert(message);
     }
     setUploadingProof(false);
   };
@@ -1113,6 +1327,14 @@ export default function DashboardScreen() {
   const totalInvested = useMemo(() => investments.reduce((s, i) => s + i.investment, 0), [investments]);
   const totalEarned = useMemo(() => investments.reduce((s, i) => s + i.earned, 0), [investments]);
   const availableBalance = useMemo(() => Math.max(0, totalEarned - withdrawnTotal), [totalEarned, withdrawnTotal]);
+  const minimumWithdrawal = useMemo(() => {
+    const rawValue = Number(siteContent.minimum_withdrawal_amount || 500);
+    return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : 500;
+  }, [siteContent.minimum_withdrawal_amount]);
+  const quickWithdrawalAmounts = useMemo(() => {
+    const base = Math.max(1, Math.ceil(minimumWithdrawal));
+    return [base, base * 2, base * 4, base * 10];
+  }, [minimumWithdrawal]);
   const dailyProfit = useMemo(() => investments.reduce((s, i) => s + i.daily, 0), [investments]);
   const unreadNotifCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
@@ -1718,19 +1940,53 @@ export default function DashboardScreen() {
                         <p className="text-[11px] text-zinc-400">Amount will be auto-filled — ₹{selectedPlan.investment.toLocaleString('en-IN')} will be sent to <span className="text-amber-400 font-semibold">{upiName || 'Gulshan Yadav'}</span></p>
                       </div>
                       <div className="space-y-3">
-                        <button onClick={handleInvest} disabled={investing} className={`w-full py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
-                          {investing ? (
-                            <div className="flex items-center justify-center gap-2">
-                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                              Opening UPI...
+                        {isAndroidDevice ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-3">
+                              <button onClick={() => handleInvest('gpay')} disabled={investing} className={`py-3.5 rounded-xl bg-white text-zinc-900 font-semibold transition-all duration-200 active:scale-[0.98] ${investing ? 'opacity-60' : ''}`}>
+                                {investing ? (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-zinc-300 border-t-zinc-900 rounded-full animate-spin" />
+                                    Opening...
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <span>Google Pay</span>
+                                    <ArrowUpRight className="w-4 h-4" />
+                                  </div>
+                                )}
+                              </button>
+                              <button onClick={() => handleInvest('generic')} disabled={investing} className={`py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
+                                {investing ? (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Opening...
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <span>Other UPI</span>
+                                    <ArrowUpRight className="w-4 h-4" />
+                                  </div>
+                                )}
+                              </button>
                             </div>
-                          ) : (
-                            <div className="flex items-center justify-center gap-2">
-                              <span>Pay ₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
-                              <ArrowUpRight className="w-4 h-4" />
-                            </div>
-                          )}
-                        </button>
+                            <p className="text-[10px] text-zinc-500 text-center">Google Pay users tap Google Pay. PhonePe, Paytm aur dusre apps ke liye Other UPI use karein.</p>
+                          </>
+                        ) : (
+                          <button onClick={() => handleInvest('generic')} disabled={investing} className={`w-full py-3.5 rounded-xl text-white font-semibold transition-all duration-200 active:scale-[0.98] ${selectedPlan.btnBg} ${investing ? 'opacity-60' : ''}`}>
+                            {investing ? (
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Opening UPI...
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-2">
+                                <span>Pay ₹{selectedPlan.investment.toLocaleString('en-IN')}</span>
+                                <ArrowUpRight className="w-4 h-4" />
+                              </div>
+                            )}
+                          </button>
+                        )}
                         <button onClick={() => { setSelectedPlan(null); setPaymentStatus('idle'); }} className="w-full py-3 rounded-xl bg-zinc-800 border border-zinc-700/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-colors text-sm font-medium">
                           Cancel
                         </button>
@@ -2543,7 +2799,7 @@ export default function DashboardScreen() {
                 </div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm text-zinc-500">Min. Withdrawal</span>
-                  <span className="text-sm font-medium text-zinc-900 dark:text-white">₹500</span>
+                  <span className="text-sm font-medium text-zinc-900 dark:text-white">₹{minimumWithdrawal.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
@@ -2559,11 +2815,14 @@ export default function DashboardScreen() {
                 {withdrawAmount && Number(withdrawAmount) > availableBalance && (
                   <p className="text-[11px] text-red-400 mt-1">Amount exceeds available balance</p>
                 )}
+                {withdrawAmount && Number(withdrawAmount) < minimumWithdrawal && (
+                  <p className="text-[11px] text-red-400 mt-1">Minimum withdrawal is ₹{minimumWithdrawal.toLocaleString('en-IN')}</p>
+                )}
               </div>
 
               {/* Quick amounts */}
               <div className="flex gap-2 mb-4">
-                {[500, 1000, 2000, 5000].map((amt) => (
+                {quickWithdrawalAmounts.map((amt) => (
                   <button key={amt} onClick={() => setWithdrawAmount(String(amt))} className="flex-1 py-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all">
                     ₹{amt.toLocaleString('en-IN')}
                   </button>
@@ -2572,7 +2831,7 @@ export default function DashboardScreen() {
 
               <button
                 onClick={async () => {
-                  if (!withdrawAmount || Number(withdrawAmount) < 500) return;
+                  if (!withdrawAmount || Number(withdrawAmount) < minimumWithdrawal) return;
                   const wAmt = Number(withdrawAmount);
                   setWithdrawing(true);
                   await new Promise((r) => setTimeout(r, 2500));
@@ -2598,7 +2857,7 @@ export default function DashboardScreen() {
                   setWithdrawSuccess(true);
                   setTimeout(() => setWithdrawSuccess(false), 3000);
                 }}
-                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < 500 || Number(withdrawAmount) > availableBalance}
+                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < minimumWithdrawal || Number(withdrawAmount) > availableBalance}
                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {withdrawing ? (

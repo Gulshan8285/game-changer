@@ -1,6 +1,24 @@
 import { PrismaClient } from '@prisma/client'
+import { PrismaNeon } from '@prisma/adapter-neon'
 
-const db = new PrismaClient()
+function resolveDatabaseUrl() {
+  const candidates = [
+    process.env.DATABASE_URL,
+    process.env.NEON_DATABASE_URL,
+    process.env.POSTGRES_URL,
+  ]
+
+  return (
+    candidates.find((value) => value && /^(postgres|postgresql):\/\//.test(value)) || ''
+  )
+}
+
+const databaseUrl = resolveDatabaseUrl()
+const db = databaseUrl
+  ? new PrismaClient({
+      adapter: new PrismaNeon({ connectionString: databaseUrl }),
+    })
+  : new PrismaClient()
 
 async function main() {
   console.log('🌱 Seeding database...')

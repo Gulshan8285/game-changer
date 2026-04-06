@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 import { db } from '@/lib/db';
 
 // Admin WhatsApp number for notification
@@ -20,6 +18,14 @@ export async function GET(request: Request) {
     // Get approved proofs that haven't been consumed yet
     const proofs = await db.paymentProof.findMany({
       where: { userId, status: 'approved' },
+      select: {
+        id: true,
+        planName: true,
+        amount: true,
+        status: true,
+        planData: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -63,20 +69,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Image too large (max 5MB)' }, { status: 400 });
     }
 
-    // Ensure uploads directory exists
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'payment_proofs');
-    await mkdir(uploadsDir, { recursive: true });
-
-    // Save screenshot with unique filename including UTR
+    // Keep a human-readable filename, but persist image data in the database.
     const timestamp = Date.now();
     const ext = screenshot.name?.split('.').pop() || 'jpg';
     const safeUtr = utr.trim().replace(/[^a-zA-Z0-9]/g, '');
     const filename = `proof_${safeUtr}_${timestamp}.${ext}`;
-    const filepath = path.join(uploadsDir, filename);
 
     const bytes = await screenshot.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(filepath, buffer);
+    const screenshotMimeType = screenshot.type || 'image/jpeg';
+    const screenshotBase64 = buffer.toString('base64');
 
     // Store plan data as JSON for later use on approval
     const planData = JSON.stringify({
@@ -101,6 +103,8 @@ export async function POST(request: Request) {
         planName: planName || '',
         amount: parseInt(amount) || 0,
         screenshotFilename: filename,
+        screenshotMimeType,
+        screenshotBase64,
         planData,
         status: 'pending',
       },
@@ -129,7 +133,7 @@ export async function POST(request: Request) {
     }).catch(() => {});
 
     console.log(`[PAYMENT PROOF] Created proof ID: ${proof.id}, UTR: ${utr.trim()}`);
-    console.log(`[PAYMENT PROOF] Saved file: ${filepath}`);
+    console.log(`[PAYMENT PROOF] Stored screenshot in database: ${filename}`);
 
     return NextResponse.json({
       success: true,

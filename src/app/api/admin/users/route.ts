@@ -1,20 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkAdminAuth, unauthorizedResponse } from '@/lib/admin-auth'
-
-async function rawQuery(sql: string) {
-  return db.$queryRawUnsafe(sql)
-}
+import { buildLogoutSessionData, getUserPresence } from '@/lib/user-session'
 
 export async function GET(request: NextRequest) {
   if (!checkAdminAuth(request)) return unauthorizedResponse()
 
   try {
-    const users = await rawQuery(
-      'SELECT id, name, email, phone, avatar, createdAt, forceLogoutAt FROM User ORDER BY createdAt DESC'
-    ) as any[]
+    const users = await db.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        avatar: true,
+        createdAt: true,
+        forceLogoutAt: true,
+        sessionStatus: true,
+        lastLoginAt: true,
+        lastSeenAt: true,
+        loggedOutAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
 
-    return NextResponse.json({ success: true, users })
+    const now = new Date()
+
+    return NextResponse.json({
+      success: true,
+      users: users.map((user) => ({
+        ...user,
+        presence: getUserPresence(user, now),
+      })),
+    })
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Failed to fetch users' },
@@ -33,13 +51,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User ID required' }, { status: 400 })
     }
 
-    const safeId = userId.replace(/'/g, "''")
-
     // Set forceLogoutAt to NOW — user will be kicked out on next poll
     // All their data stays intact, they just need to login again
-    await rawQuery(
-      `UPDATE User SET forceLogoutAt = datetime('now') WHERE id = '${safeId}'`
-    )
+    await db.user.update({
+      where: { id: userId },
+      data: buildLogoutSessionData(new Date(), true),
+    })
 
     return NextResponse.json({ success: true, message: 'User will be logged out. They need to login again.' })
   } catch (error: any) {

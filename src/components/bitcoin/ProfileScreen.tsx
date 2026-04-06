@@ -60,6 +60,22 @@ export default function ProfileScreen() {
     try { const res = await fetch('/api/profile/avatar', { method: 'POST', body: formData }); if (res.ok) { const data = await res.json(); setUser({ ...user, avatar: data.avatarUrl }); } } catch { /* error */ } finally { setUploading(false); }
   };
 
+  const handleLogout = async () => {
+    if (user?.id) {
+      try {
+        await fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, action: 'logout' }),
+        });
+      } catch {
+        // Logout should still proceed on client.
+      }
+    }
+
+    logout();
+  };
+
   const sectionHeader = (icon: any, title: string) => (<div className="flex items-center gap-2 mb-4">{icon}<h3 className="text-white font-semibold">{title}</h3></div>);
   const inputField = (label: string, field: string, placeholder: string, type = 'text', icon?: any) => (
     <div className="space-y-1.5">
@@ -123,7 +139,7 @@ export default function ProfileScreen() {
               {user?.isGoogleAuth && <p className="text-[10px] text-amber-500/60 mt-1">Signed in with Google</p>}
               {/* Logout Button */}
               <button
-                onClick={() => logout()}
+                onClick={handleLogout}
                 className="mt-4 flex items-center gap-2 px-5 py-2 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-sm"
               >
                 <LogOut className="w-4 h-4" />

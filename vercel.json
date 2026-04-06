@@ -1,0 +1,5 @@
+{
+  "framework": "nextjs",
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm exec prisma generate && pnpm exec tsx scripts/bootstrap-neon.ts && pnpm exec prisma db seed && next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/"
+}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { buildLoginSessionData } from '@/lib/user-session';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
           name: name || user.name,
           avatar: avatar || user.avatar,
           isGoogleAuth: true,
+          ...buildLoginSessionData(),
         }
       });
     } else {
@@ -30,6 +32,7 @@ export async function POST(req: NextRequest) {
           email,
           avatar: avatar || null,
           isGoogleAuth: true,
+          ...buildLoginSessionData(),
         }
       });
     }

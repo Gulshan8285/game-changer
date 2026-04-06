@@ -17,7 +17,7 @@ const RefundPolicyScreen = dynamic(() => import('@/components/bitcoin/RefundPoli
 const TermsPageScreen = dynamic(() => import('@/components/bitcoin/TermsPageScreen'), { ssr: false });
 
 export default function Home() {
-  const { currentScreen, isAuthenticated, needsTermsAcceptance } = useAppStore();
+  const { currentScreen, isAuthenticated, needsTermsAcceptance, user, logout } = useAppStore();
 
   // Prevent phone back button from killing the app
   useEffect(() => {
@@ -32,6 +32,48 @@ export default function Home() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+
+    let cancelled = false;
+
+    const pingSession = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, action: 'heartbeat' }),
+        });
+        const data = await res.json().catch(() => null);
+
+        if (!cancelled && data?.forceLogout) {
+          logout();
+        }
+      } catch {
+        // Ignore transient heartbeat issues.
+      }
+    };
+
+    pingSession();
+    const interval = window.setInterval(pingSession, 60000);
+    const handleFocus = () => { void pingSession(); };
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void pingSession();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, user?.id, logout]);
 
   // Force terms screen if user needs to accept terms
   const effectiveScreen = (isAuthenticated && needsTermsAcceptance) ? 'terms' : currentScreen;
