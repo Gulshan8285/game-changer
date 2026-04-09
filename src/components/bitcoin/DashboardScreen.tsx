@@ -435,9 +435,21 @@ function parsePlanFromProof(proof: any) {
 
 type UpiLaunchTarget = 'generic' | 'gpay';
 
+function getWithdrawalDescription(status: string, upiId: string) {
+  if (status === 'approved') return `Payment done to ${upiId}`;
+  if (status === 'rejected') return `Withdrawal rejected for ${upiId}`;
+  return `Withdrawal in process for ${upiId}`;
+}
+
+function getWithdrawalStatusLabel(status: string) {
+  if (status === 'approved') return 'Payment Done';
+  if (status === 'rejected') return 'Rejected';
+  return 'In Process';
+}
+
 export default function DashboardScreen() {
   // ── Store & Theme at TOP (fixes stale closure bug) ──
-  const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, logout, dashboardView, setDashboardView } = useAppStore();
+  const { bitcoinPrice, bitcoinHistory, setBitcoinData, setScreen, user, setUser, logout, dashboardView, setDashboardView } = useAppStore();
   const { theme, setTheme } = useTheme();
   const [chartType, setChartType] = useState<'line' | 'candle'>('line');
   const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('30d');
@@ -464,12 +476,18 @@ export default function DashboardScreen() {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [upiId, setUpiId] = useState('gulshanyadav62000-6@okicici');
   const [upiName, setUpiName] = useState('Gulshan Yadav');
-  const [isAndroidDevice, setIsAndroidDevice] = useState(false);
+  const [showUpiAppButtons, setShowUpiAppButtons] = useState(false);
   // showWallet/showHistory removed — now using store's dashboardView
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawUpiId, setWithdrawUpiId] = useState(user?.upiId || '');
   const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState('');
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+  const [withdrawStatusToast, setWithdrawStatusToast] = useState<null | {
+    kind: 'approved' | 'rejected';
+    message: string;
+  }>(null);
   const [withdrawnTotal, setWithdrawnTotal] = useState(0);
   
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -490,6 +508,10 @@ export default function DashboardScreen() {
   consumedProofsRef.current = consumedProofs;
   const transactionsRef = useRef(transactions);
   transactionsRef.current = transactions;
+  const notificationsRef = useRef(notifications);
+  notificationsRef.current = notifications;
+  const withdrawnTotalRef = useRef(withdrawnTotal);
+  withdrawnTotalRef.current = withdrawnTotal;
 
   const saveInvestments = (items: any[]) => {
     setInvestments(items);
@@ -497,7 +519,11 @@ export default function DashboardScreen() {
   };
 
   useEffect(() => {
-    setIsAndroidDevice(/Android/i.test(navigator.userAgent || ''));
+    const userAgent = navigator.userAgent || '';
+    const platform = navigator.platform || '';
+    const isAndroid = /Android/i.test(userAgent);
+    const isIOS = /iPhone|iPod|iPad/i.test(userAgent) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setShowUpiAppButtons(isAndroid || isIOS);
   }, []);
 
   // Load all data from localStorage
@@ -554,6 +580,22 @@ export default function DashboardScreen() {
     setConsumedProofsReady(true);
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!showWithdraw) return;
+    setWithdrawUpiId(user?.upiId || '');
+    setWithdrawError('');
+  }, [showWithdraw, user?.upiId]);
+
+  useEffect(() => {
+    if (!withdrawStatusToast) return;
+
+    const timeout = window.setTimeout(() => {
+      setWithdrawStatusToast(null);
+    }, 4000);
+
+    return () => window.clearTimeout(timeout);
+  }, [withdrawStatusToast]);
+
   // ── Fetch admin notifications from API + poll every 30s ──
   // Also checks if admin has force-logged-out this user
   useEffect(() => {
@@ -601,6 +643,249 @@ export default function DashboardScreen() {
     const notifInterval = setInterval(fetchApiNotifications, 30000);
     return () => clearInterval(notifInterval);
   }, [user?.id, logout]);
+
+  useEffect(() => {
+    if (!user?.id || !investmentsReady) return;
+
+    const syncWithdrawalStatuses = async () => {
+      try {
+        const res = await fetch(`/api/withdrawal/request?userId=${user.id}`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (!data.success || !Array.isArray(data.withdrawals)) return;
+
+        const remoteWithdrawals = (data.withdrawals as any[]).slice();
+        if (remoteWithdrawals.length === 0) return;
+
+        const existingNotificationIds = new Set(
+          notificationsRef.current.map((notification: any) => String(notification.id))
+        );
+        const matchedRequestIds = new Set<string>();
+        const notificationsToAdd: any[] = [];
+        let nextWithdrawnTotal = withdrawnTotalRef.current;
+        let transactionsChanged = false;
+        let toastToShow: { kind: 'approved' | 'rejected'; message: string } | null = null;
+
+        let nextTransactions = transactionsRef.current.map((transaction: any) => {
+          if (transaction.type !== 'withdraw') return transaction;
+
+          const previousStatus =
+            typeof transaction.requestStatus === 'string'
+              ? transaction.requestStatus
+              : String(transaction.desc || '').toLowerCase().includes('payment done')
+                ? 'approved'
+                : String(transaction.desc || '').toLowerCase().includes('rejected')
+                  ? 'rejected'
+                  : 'pending';
+
+          let matchedWithdrawal =
+            transaction.requestId
+              ? remoteWithdrawals.find((withdrawal) => withdrawal.id === transaction.requestId)
+              : undefined;
+
+          if (!matchedWithdrawal) {
+            matchedWithdrawal = remoteWithdrawals.find(
+              (withdrawal) =>
+                !matchedRequestIds.has(withdrawal.id) &&
+                withdrawal.amount === transaction.amount
+            );
+          }
+
+          if (!matchedWithdrawal) return transaction;
+
+          matchedRequestIds.add(String(matchedWithdrawal.id));
+
+          const resolvedUpiId = transaction.upiId || matchedWithdrawal.upiId || user.upiId || 'your UPI ID';
+          const nextTransaction = {
+            ...transaction,
+            requestId: matchedWithdrawal.id,
+            requestStatus: matchedWithdrawal.status,
+            upiId: resolvedUpiId,
+            adminNote: matchedWithdrawal.adminNote || null,
+          };
+
+          if (matchedWithdrawal.status === 'approved') {
+            if (previousStatus !== 'approved') {
+              const notificationId = `withdraw-approved-${matchedWithdrawal.id}`;
+              if (!existingNotificationIds.has(notificationId)) {
+                existingNotificationIds.add(notificationId);
+                notificationsToAdd.push({
+                  id: notificationId,
+                  icon: 'CheckCircle2',
+                  title: 'Payment Done',
+                  desc: `₹${matchedWithdrawal.amount.toLocaleString('en-IN')} withdrawal payment done successfully`,
+                  time: 'Just now',
+                  dot: 'bg-emerald-500',
+                  read: false,
+                });
+                toastToShow = {
+                  kind: 'approved',
+                  message: `Withdrawal successful: ₹${matchedWithdrawal.amount.toLocaleString('en-IN')}`,
+                };
+              }
+            }
+          } else if (matchedWithdrawal.status === 'rejected') {
+            if (!transaction.balanceAdjustedBack) {
+              nextWithdrawnTotal = Math.max(0, nextWithdrawnTotal - matchedWithdrawal.amount);
+              nextTransaction.balanceAdjustedBack = true;
+            }
+
+            if (previousStatus !== 'rejected') {
+              const notificationId = `withdraw-rejected-${matchedWithdrawal.id}`;
+              if (!existingNotificationIds.has(notificationId)) {
+                existingNotificationIds.add(notificationId);
+                notificationsToAdd.push({
+                  id: notificationId,
+                  icon: 'Wallet',
+                  title: 'Withdrawal Rejected',
+                  desc: `₹${matchedWithdrawal.amount.toLocaleString('en-IN')} returned to your balance`,
+                  time: 'Just now',
+                  dot: 'bg-red-500',
+                  read: false,
+                });
+                toastToShow = {
+                  kind: 'rejected',
+                  message: `Withdrawal rejected: ₹${matchedWithdrawal.amount.toLocaleString('en-IN')} returned`,
+                };
+              }
+            }
+          } else {
+            nextTransaction.balanceAdjustedBack = false;
+          }
+
+          nextTransaction.desc = getWithdrawalDescription(
+            matchedWithdrawal.status,
+            resolvedUpiId,
+          );
+          nextTransaction.date = new Date(
+            (matchedWithdrawal.status === 'pending'
+              ? matchedWithdrawal.createdAt
+              : matchedWithdrawal.updatedAt) || matchedWithdrawal.createdAt
+          ).toLocaleString('en-IN');
+
+          if (
+            nextTransaction.requestId !== transaction.requestId ||
+            nextTransaction.requestStatus !== transaction.requestStatus ||
+            nextTransaction.desc !== transaction.desc ||
+            nextTransaction.date !== transaction.date ||
+            nextTransaction.upiId !== transaction.upiId ||
+            nextTransaction.balanceAdjustedBack !== transaction.balanceAdjustedBack ||
+            nextTransaction.adminNote !== transaction.adminNote
+          ) {
+            transactionsChanged = true;
+          }
+
+          return nextTransaction;
+        });
+
+        const currentRequestIds = new Set(
+          nextTransactions
+            .filter((transaction: any) => transaction.type === 'withdraw' && transaction.requestId)
+            .map((transaction: any) => String(transaction.requestId))
+        );
+
+        const missingTransactions = remoteWithdrawals
+          .filter((withdrawal) => !currentRequestIds.has(String(withdrawal.id)))
+          .map((withdrawal) => {
+            const resolvedUpiId = withdrawal.upiId || user.upiId || 'your UPI ID';
+
+            if (withdrawal.status === 'approved') {
+              const notificationId = `withdraw-approved-${withdrawal.id}`;
+              if (!existingNotificationIds.has(notificationId)) {
+                existingNotificationIds.add(notificationId);
+                notificationsToAdd.push({
+                  id: notificationId,
+                  icon: 'CheckCircle2',
+                  title: 'Payment Done',
+                  desc: `₹${withdrawal.amount.toLocaleString('en-IN')} withdrawal payment done successfully`,
+                  time: 'Just now',
+                  dot: 'bg-emerald-500',
+                  read: false,
+                });
+                toastToShow = toastToShow || {
+                  kind: 'approved',
+                  message: `Withdrawal successful: ₹${withdrawal.amount.toLocaleString('en-IN')}`,
+                };
+              }
+            } else if (withdrawal.status === 'rejected') {
+              const notificationId = `withdraw-rejected-${withdrawal.id}`;
+              if (!existingNotificationIds.has(notificationId)) {
+                existingNotificationIds.add(notificationId);
+                notificationsToAdd.push({
+                  id: notificationId,
+                  icon: 'Wallet',
+                  title: 'Withdrawal Rejected',
+                  desc: `₹${withdrawal.amount.toLocaleString('en-IN')} returned to your balance`,
+                  time: 'Just now',
+                  dot: 'bg-red-500',
+                  read: false,
+                });
+                toastToShow = toastToShow || {
+                  kind: 'rejected',
+                  message: `Withdrawal rejected: ₹${withdrawal.amount.toLocaleString('en-IN')} returned`,
+                };
+              }
+            }
+
+            return {
+              id: `withdraw-${withdrawal.id}`,
+              type: 'withdraw',
+              requestId: withdrawal.id,
+              requestStatus: withdrawal.status,
+              upiId: resolvedUpiId,
+              balanceAdjustedBack: withdrawal.status === 'rejected',
+              amount: withdrawal.amount,
+              date: new Date(
+                (withdrawal.status === 'pending'
+                  ? withdrawal.createdAt
+                  : withdrawal.updatedAt) || withdrawal.createdAt
+              ).toLocaleString('en-IN'),
+              desc: getWithdrawalDescription(withdrawal.status, resolvedUpiId),
+              adminNote: withdrawal.adminNote || null,
+            };
+          });
+
+        if (missingTransactions.length > 0) {
+          nextTransactions = [...missingTransactions, ...nextTransactions];
+          transactionsChanged = true;
+        }
+
+        const remoteReservedTotal = remoteWithdrawals.reduce((sum, withdrawal) => {
+          return withdrawal.status === 'rejected' ? sum : sum + Number(withdrawal.amount || 0);
+        }, 0);
+        nextWithdrawnTotal = Math.max(nextWithdrawnTotal, remoteReservedTotal);
+
+        if (transactionsChanged) {
+          setTransactions(nextTransactions);
+          localStorage.setItem('btc-transactions', JSON.stringify(nextTransactions));
+        }
+
+        if (nextWithdrawnTotal !== withdrawnTotalRef.current) {
+          setWithdrawnTotal(nextWithdrawnTotal);
+          localStorage.setItem('btc-wallet-withdrawn', JSON.stringify(nextWithdrawnTotal));
+        }
+
+        if (notificationsToAdd.length > 0) {
+          setNotifications((prev) => {
+            const nextNotifications = [...notificationsToAdd, ...prev];
+            localStorage.setItem('btc-notifications', JSON.stringify(nextNotifications));
+            return nextNotifications;
+          });
+        }
+
+        if (toastToShow) {
+          setWithdrawStatusToast(toastToShow);
+        }
+      } catch {
+        /* silent */
+      }
+    };
+
+    syncWithdrawalStatuses();
+    const withdrawalInterval = setInterval(syncWithdrawalStatuses, 15000);
+    return () => clearInterval(withdrawalInterval);
+  }, [user?.id, user?.upiId, investmentsReady]);
 
   // ── 24-hour auto-earning system with countdown timer ──
   // Step 1: On mount + when investments change, credit missed earnings & set initial countdowns
@@ -1338,6 +1623,113 @@ export default function DashboardScreen() {
   const dailyProfit = useMemo(() => investments.reduce((s, i) => s + i.daily, 0), [investments]);
   const unreadNotifCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
+  const handleWithdrawRequest = async () => {
+    setWithdrawError('');
+
+    if (!user?.id) {
+      setWithdrawError('Please login again and try once more.');
+      return;
+    }
+
+    if (!withdrawAmount || Number(withdrawAmount) < minimumWithdrawal) return;
+
+    const wAmt = Number(withdrawAmount);
+    const normalizedWithdrawUpiId = withdrawUpiId.trim().toLowerCase();
+
+    if (!normalizedWithdrawUpiId) {
+      setWithdrawError('Please enter your UPI ID.');
+      return;
+    }
+
+    if (!normalizedWithdrawUpiId.includes('@')) {
+      setWithdrawError('Please enter a valid UPI ID.');
+      return;
+    }
+
+    setWithdrawing(true);
+
+    try {
+      const res = await fetch('/api/withdrawal/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          amount: wAmt,
+          upiId: normalizedWithdrawUpiId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setWithdrawError(data.error || 'Failed to submit withdrawal request.');
+        return;
+      }
+
+      const savedUpiId = data.savedUpiId || normalizedWithdrawUpiId;
+      const withdrawalRequest = data.withdrawal;
+      const newWithdrawnTotal = withdrawnTotal + wAmt;
+      setWithdrawnTotal(newWithdrawnTotal);
+      localStorage.setItem('btc-wallet-withdrawn', JSON.stringify(newWithdrawnTotal));
+
+      const tx = {
+        id: withdrawalRequest?.id ? `withdraw-${withdrawalRequest.id}` : Date.now(),
+        type: 'withdraw',
+        requestId: withdrawalRequest?.id || null,
+        requestStatus: withdrawalRequest?.status || 'pending',
+        upiId: savedUpiId,
+        balanceAdjustedBack: false,
+        amount: wAmt,
+        date: new Date().toLocaleString('en-IN'),
+        desc: getWithdrawalDescription('pending', savedUpiId),
+      };
+      const newTxs = [tx, ...transactions];
+      setTransactions(newTxs);
+      localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
+
+      const notif = {
+        id: withdrawalRequest?.id ? `withdraw-request-${withdrawalRequest.id}` : Date.now() + 1,
+        icon: 'Wallet',
+        title: 'Withdrawal Request Submitted',
+        desc: `₹${wAmt.toLocaleString('en-IN')} request sent for admin review on ${savedUpiId}`,
+        time: 'Just now',
+        dot: 'bg-amber-500',
+        read: false,
+      };
+      const newNotifs = [notif, ...notifications];
+      setNotifications(newNotifs);
+      localStorage.setItem('btc-notifications', JSON.stringify(newNotifs));
+
+      if (user.upiId !== savedUpiId) {
+        setUser({ ...user, upiId: savedUpiId });
+      }
+
+      fetch('/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'withdraw',
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email,
+          userPhone: user.phone,
+          amount: wAmt,
+          method: 'upi',
+        }),
+      }).catch(() => {});
+
+      setWithdrawAmount('');
+      setWithdrawUpiId(savedUpiId);
+      setShowWithdraw(false);
+      setWithdrawSuccess(true);
+      setTimeout(() => setWithdrawSuccess(false), 3000);
+    } catch {
+      setWithdrawError('Failed to submit withdrawal request.');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   // Determine which view to show
   const currentView = dashboardView;
 
@@ -1670,6 +2062,21 @@ export default function DashboardScreen() {
                             <div className="flex items-center gap-2">
                               <p className="text-xs font-semibold text-zinc-900 dark:text-white">{tx.desc}</p>
                               {tx.planName && <span className="px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-500 text-[9px] font-semibold">{tx.planName}</span>}
+                              {tx.type === 'withdraw' && tx.requestStatus && (
+                                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-semibold ${
+                                  tx.requestStatus === 'approved'
+                                    ? 'bg-emerald-500/10 text-emerald-500'
+                                    : tx.requestStatus === 'rejected'
+                                      ? 'bg-red-500/10 text-red-400'
+                                      : 'bg-amber-500/10 text-amber-500'
+                                }`}>
+                                  {tx.requestStatus === 'approved'
+                                    ? getWithdrawalStatusLabel('approved')
+                                    : tx.requestStatus === 'rejected'
+                                      ? getWithdrawalStatusLabel('rejected')
+                                      : getWithdrawalStatusLabel('pending')}
+                                </span>
+                              )}
                             </div>
                             <p className="text-[10px] text-zinc-500 dark:text-zinc-500">{tx.date}</p>
                           </div>
@@ -1940,7 +2347,7 @@ export default function DashboardScreen() {
                         <p className="text-[11px] text-zinc-400">Amount will be auto-filled — ₹{selectedPlan.investment.toLocaleString('en-IN')} will be sent to <span className="text-amber-400 font-semibold">{upiName || 'Gulshan Yadav'}</span></p>
                       </div>
                       <div className="space-y-3">
-                        {isAndroidDevice ? (
+                        {showUpiAppButtons ? (
                           <>
                             <div className="grid grid-cols-2 gap-3">
                               <button onClick={() => handleInvest('gpay')} disabled={investing} className={`py-3.5 rounded-xl bg-white text-zinc-900 font-semibold transition-all duration-200 active:scale-[0.98] ${investing ? 'opacity-60' : ''}`}>
@@ -2789,13 +3196,13 @@ export default function DashboardScreen() {
                   <ArrowUpRight className="w-7 h-7 text-amber-400" />
                 </div>
                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Withdraw Funds</h3>
-                <p className="text-sm text-zinc-500 mt-1">Transfer earnings to your bank</p>
+                <p className="text-sm text-zinc-500 mt-1">Enter amount and your UPI ID to send a withdrawal request</p>
               </div>
 
               <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 mb-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-zinc-500">Available Balance</span>
-                  <span className="text-sm font-bold text-emerald-500">₹{totalEarned.toLocaleString('en-IN')}</span>
+                  <span className="text-sm font-bold text-emerald-500">₹{availableBalance.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm text-zinc-500">Min. Withdrawal</span>
@@ -2820,6 +3227,26 @@ export default function DashboardScreen() {
                 )}
               </div>
 
+              <div className="mb-4">
+                <label className="text-xs text-zinc-500 mb-1.5 block">Please enter your UPI ID</label>
+                <input
+                  type="text"
+                  value={withdrawUpiId}
+                  onChange={(e) => {
+                    setWithdrawUpiId(e.target.value);
+                    if (withdrawError) setWithdrawError('');
+                  }}
+                  placeholder="yourname@upi"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  className="w-full px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all placeholder:text-zinc-400"
+                />
+                {withdrawUpiId && !withdrawUpiId.includes('@') && (
+                  <p className="text-[11px] text-red-400 mt-1">Please enter a valid UPI ID</p>
+                )}
+                <p className="text-[11px] text-zinc-500 mt-1">Admin will receive your profile, email, amount and UPI details for approval.</p>
+              </div>
+
               {/* Quick amounts */}
               <div className="flex gap-2 mb-4">
                 {quickWithdrawalAmounts.map((amt) => (
@@ -2829,47 +3256,25 @@ export default function DashboardScreen() {
                 ))}
               </div>
 
+              {withdrawError && (
+                <p className="text-[11px] text-red-400 mb-3">{withdrawError}</p>
+              )}
+
               <button
-                onClick={async () => {
-                  if (!withdrawAmount || Number(withdrawAmount) < minimumWithdrawal) return;
-                  const wAmt = Number(withdrawAmount);
-                  setWithdrawing(true);
-                  await new Promise((r) => setTimeout(r, 2500));
-                  setWithdrawing(false);
-                  // Deduct from withdrawn total
-                  const newWithdrawnTotal = withdrawnTotal + wAmt;
-                  setWithdrawnTotal(newWithdrawnTotal);
-                  localStorage.setItem('btc-wallet-withdrawn', JSON.stringify(newWithdrawnTotal));
-                  // Record withdrawal transaction
-                  const tx = { id: Date.now(), type: 'withdraw', amount: wAmt, date: new Date().toLocaleString('en-IN'), desc: 'Withdrawal to bank account' };
-                  const newTxs = [tx, ...transactions];
-                  setTransactions(newTxs);
-                  localStorage.setItem('btc-transactions', JSON.stringify(newTxs));
-                  // Add notification
-                  const notif = { id: Date.now(), icon: 'Wallet', title: 'Withdrawal Processed', desc: `₹${wAmt.toLocaleString('en-IN')} sent to your bank account`, time: 'Just now', dot: 'bg-amber-500', read: false };
-                  const newNotifs = [notif, ...notifications];
-                  setNotifications(newNotifs);
-                  localStorage.setItem('btc-notifications', JSON.stringify(newNotifs));
-                  // Track to Google Sheet
-                  fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'withdraw', userId: user?.id, userName: user?.name, userEmail: user?.email, userPhone: user?.phone, amount: wAmt, method: 'bank' }) }).catch(() => {});
-                  setWithdrawAmount('');
-                  setShowWithdraw(false);
-                  setWithdrawSuccess(true);
-                  setTimeout(() => setWithdrawSuccess(false), 3000);
-                }}
-                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < minimumWithdrawal || Number(withdrawAmount) > availableBalance}
+                onClick={handleWithdrawRequest}
+                disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) < minimumWithdrawal || Number(withdrawAmount) > availableBalance || !withdrawUpiId.trim() || !withdrawUpiId.includes('@')}
                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {withdrawing ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Processing...
+                    Submitting Request...
                   </div>
                 ) : (
-                  `Withdraw ₹${Number(withdrawAmount || 0).toLocaleString('en-IN')}`
+                  `Request ₹${Number(withdrawAmount || 0).toLocaleString('en-IN')}`
                 )}
               </button>
-              <button onClick={() => { setShowWithdraw(false); setWithdrawAmount(''); }} className="w-full py-3 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors text-sm font-medium mt-2">
+              <button onClick={() => { setShowWithdraw(false); setWithdrawAmount(''); setWithdrawError(''); }} className="w-full py-3 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors text-sm font-medium mt-2">
                 Cancel
               </button>
             </div>
@@ -2881,7 +3286,24 @@ export default function DashboardScreen() {
       {withdrawSuccess && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-medium shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2">
           <CheckCircle2 className="w-5 h-5" />
-          Withdrawal successful! Amount sent to bank
+          Withdrawal request submitted successfully
+        </div>
+      )}
+
+      {withdrawStatusToast && (
+        <div
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[121] flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 ${
+            withdrawStatusToast.kind === 'approved'
+              ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
+              : 'bg-red-500/20 border border-red-500/30 text-red-300'
+          }`}
+        >
+          {withdrawStatusToast.kind === 'approved' ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : (
+            <X className="w-5 h-5" />
+          )}
+          {withdrawStatusToast.message}
         </div>
       )}
 

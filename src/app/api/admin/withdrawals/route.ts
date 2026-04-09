@@ -13,7 +13,11 @@ export async function GET(request: NextRequest) {
       where: status ? { status } : undefined,
       include: {
         user: {
-          select: { phone: true },
+          select: {
+            phone: true,
+            avatar: true,
+            upiId: true,
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -22,6 +26,8 @@ export async function GET(request: NextRequest) {
     const serializedWithdrawals = withdrawals.map(({ user, ...withdrawal }) => ({
       ...withdrawal,
       userPhone: user?.phone || null,
+      userAvatar: user?.avatar || null,
+      upiId: user?.upiId || null,
     }))
 
     return NextResponse.json({ success: true, withdrawals: serializedWithdrawals })

@@ -140,12 +140,14 @@ interface WithdrawalRequest {
   userId: string;
   userName: string;
   userEmail: string;
+  userPhone: string | null;
+  userAvatar: string | null;
+  upiId: string | null;
   amount: number;
   status: string;
   adminNote: string | null;
   createdAt: string;
   updatedAt: string;
-  user: { id: string; name: string; email: string; phone: string | null };
 }
 
 interface PaymentProofItem {
@@ -1179,6 +1181,7 @@ export default function AdminPage() {
         break;
       case 'notifications':
         fetchNotifications();
+        fetchWithdrawals('pending');
         break;
       case 'users':
         fetchUsers();
@@ -1200,6 +1203,32 @@ export default function AdminPage() {
   useEffect(() => {
     if (authed && activeTab === 'withdrawals') fetchWithdrawals(withdrawalFilter);
   }, [authed, activeTab, withdrawalFilter, fetchWithdrawals]);
+
+  useEffect(() => {
+    if (!authed || approveDialogOpen || approveLoading) return;
+
+    const interval = setInterval(() => {
+      if (activeTab === 'dashboard') {
+        fetchStats();
+        fetchProofs('pending');
+        fetchPayments('pending');
+        fetchWithdrawals('pending');
+        return;
+      }
+
+      if (activeTab === 'withdrawals') {
+        fetchWithdrawals(withdrawalFilter);
+        return;
+      }
+
+      if (activeTab === 'notifications') {
+        fetchNotifications();
+        fetchWithdrawals('pending');
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [authed, activeTab, approveDialogOpen, approveLoading, fetchStats, fetchProofs, fetchPayments, fetchWithdrawals, fetchNotifications, withdrawalFilter]);
 
   // ─── Plan CRUD ────────────────────────────────────────────────────────────
 
@@ -2359,6 +2388,7 @@ export default function AdminPage() {
                   <TableHeader>
                     <TableRow className="border-zinc-800/60 hover:bg-transparent">
                       <TableHead className="text-zinc-500 text-xs">User</TableHead>
+                      <TableHead className="text-zinc-500 text-xs">UPI ID</TableHead>
                       <TableHead className="text-zinc-500 text-xs">Amount</TableHead>
                       <TableHead className="text-zinc-500 text-xs">Status</TableHead>
                       <TableHead className="text-zinc-500 text-xs">Date</TableHead>
@@ -2369,11 +2399,22 @@ export default function AdminPage() {
                     {withdrawals.map((w, i) => (
                       <TableRow key={w.id} className={`border-zinc-800/40 ${i % 2 === 0 ? 'bg-transparent' : 'bg-zinc-800/20'} hover:bg-zinc-800/40 transition-colors`}>
                         <TableCell>
-                          <div>
-                            <p className="text-zinc-200 text-sm font-medium">{w.userName}</p>
-                            <p className="text-zinc-500 text-xs">{w.userEmail}</p>
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-amber-500 to-orange-500 shrink-0 flex items-center justify-center text-white text-sm font-bold">
+                              {w.userAvatar ? (
+                                <img src={w.userAvatar} alt={w.userName} className="w-full h-full object-cover" />
+                              ) : (
+                                (w.userName || '?').charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-zinc-200 text-sm font-medium">{w.userName}</p>
+                              <p className="text-zinc-500 text-xs">{w.userEmail}</p>
+                              {w.userPhone && <p className="text-zinc-600 text-xs">{w.userPhone}</p>}
+                            </div>
                           </div>
                         </TableCell>
+                        <TableCell className="text-zinc-300 text-xs font-mono">{w.upiId || 'Not provided'}</TableCell>
                         <TableCell className="text-red-400 font-semibold tabular-nums">{formatCurrency(w.amount)}</TableCell>
                         <TableCell><StatusBadge status={w.status} /></TableCell>
                         <TableCell className="text-zinc-400 text-xs">{formatDate(w.createdAt)}</TableCell>
@@ -2419,78 +2460,160 @@ export default function AdminPage() {
 
   // ─── NOTIFICATIONS TAB ────────────────────────────────────────────────────
 
-  const NotificationsTab = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            Notifications
-            <Bell className="size-5 text-amber-500" />
-          </h2>
-          <p className="text-zinc-500 text-sm mt-1">Send and manage notifications</p>
-        </div>
-        <Button
-          onClick={() => { setNotifyForm({ title: '', message: '', type: 'info' }); setNotifyDialogOpen(true); }}
-          className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-lg shadow-amber-500/20"
-        >
-          <Send className="size-4 mr-2" />
-          Send New Notification
-        </Button>
-      </div>
+  const NotificationsTab = () => {
+    const pendingWithdrawalAlerts = withdrawals.filter((w) => w.status === 'pending');
+    const showEmptyState = !loadingNotifications && !loadingWithdrawals && pendingWithdrawalAlerts.length === 0 && notifications.length === 0;
 
-      {loadingNotifications ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-8 animate-spin text-zinc-500" />
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              Notifications
+              <Bell className="size-5 text-amber-500" />
+            </h2>
+            <p className="text-zinc-500 text-sm mt-1">Send notifications to users and review pending withdrawal alerts</p>
+          </div>
+          <Button
+            onClick={() => { setNotifyForm({ title: '', message: '', type: 'info' }); setNotifyDialogOpen(true); }}
+            className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-lg shadow-amber-500/20"
+          >
+            <Send className="size-4 mr-2" />
+            Send New Notification
+          </Button>
         </div>
-      ) : notifications.length === 0 ? (
-        <Card className="bg-zinc-900 border-zinc-800/60">
-          <CardContent className="py-16 text-center">
-            <Bell className="size-14 text-zinc-800 mx-auto mb-3" />
-            <p className="text-zinc-500 text-sm">No notifications sent yet</p>
-            <p className="text-zinc-600 text-xs mt-1">Send your first notification to all users</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {notifications.map((n) => (
-            <Card key={n.id} className="bg-zinc-900 border-zinc-800/60 hover:border-zinc-700/60 transition-colors">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h3 className="text-white font-medium text-sm">{n.title}</h3>
-                      <NotificationBadge type={n.type} />
+
+        {loadingWithdrawals ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="size-7 animate-spin text-zinc-500" />
+          </div>
+        ) : pendingWithdrawalAlerts.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <ArrowUpCircle className="size-4 text-red-400" />
+              <p className="text-sm font-semibold text-white">Pending Withdrawal Alerts</p>
+              <Badge className="bg-red-500/15 text-red-300 border-red-500/30">{pendingWithdrawalAlerts.length}</Badge>
+            </div>
+
+            {pendingWithdrawalAlerts.map((w) => (
+              <Card key={`withdraw-alert-${w.id}`} className="bg-zinc-900 border-red-500/20 hover:border-red-500/30 transition-colors">
+                <CardContent className="p-4">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-full overflow-hidden bg-gradient-to-br from-amber-500 to-orange-500 shrink-0 flex items-center justify-center text-white text-sm font-bold">
+                        {w.userAvatar ? (
+                          <img src={w.userAvatar} alt={w.userName} className="w-full h-full object-cover" />
+                        ) : (
+                          (w.userName || '?').charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 className="text-white font-medium text-sm">{w.userName}</h3>
+                          <Badge className="bg-red-500/20 text-red-300 border-red-500/30">Withdrawal Alert</Badge>
+                          <StatusBadge status={w.status} />
+                        </div>
+                        <p className="text-zinc-400 text-sm break-words">{w.userEmail}</p>
+                        {w.userPhone && <p className="text-zinc-500 text-xs mt-1">Phone: {w.userPhone}</p>}
+                        <p className="text-zinc-500 text-xs mt-1 font-mono break-all">UPI ID: {w.upiId || 'Not provided'}</p>
+                        <p className="text-zinc-200 text-sm mt-2">Amount: <span className="text-red-400 font-semibold">{formatCurrency(w.amount)}</span></p>
+                        <p className="text-zinc-600 text-xs mt-2 flex items-center gap-1">
+                          <Calendar className="size-3" />
+                          {formatDate(w.createdAt)}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-zinc-400 text-sm line-clamp-2">{n.message}</p>
-                    <p className="text-zinc-600 text-xs mt-2 flex items-center gap-1">
-                      <Calendar className="size-3" />
-                      {formatDate(n.createdAt)}
-                    </p>
+
+                    <div className="flex items-center gap-2 lg:justify-end">
+                      <Button
+                        size="sm"
+                        onClick={() => openApproveDialog('withdrawal', w.id, 'approved')}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
+                      >
+                        <Check className="size-3 mr-1" />
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => openApproveDialog('withdrawal', w.id, 'rejected')}
+                        className="bg-red-600 hover:bg-red-700 text-white h-8 text-xs"
+                      >
+                        <Ban className="size-3 mr-1" />
+                        Reject
+                      </Button>
+                    </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleDeleteNotification(n.id)}
-                    className="text-zinc-500 hover:text-red-400 hover:bg-red-500/10 h-8 w-8 p-0 shrink-0"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+
+        {loadingNotifications ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="size-8 animate-spin text-zinc-500" />
+          </div>
+        ) : notifications.length === 0 ? (
+          showEmptyState ? (
+            <Card className="bg-zinc-900 border-zinc-800/60">
+              <CardContent className="py-16 text-center">
+                <Bell className="size-14 text-zinc-800 mx-auto mb-3" />
+                <p className="text-zinc-500 text-sm">No notifications or withdrawal alerts yet</p>
+                <p className="text-zinc-600 text-xs mt-1">New user broadcasts and withdrawal requests will appear here</p>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          ) : null
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Bell className="size-4 text-amber-400" />
+              <p className="text-sm font-semibold text-white">User Broadcast Notifications</p>
+            </div>
 
-    </div>
-  );
+            {notifications.map((n) => (
+              <Card key={n.id} className="bg-zinc-900 border-zinc-800/60 hover:border-zinc-700/60 transition-colors">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 className="text-white font-medium text-sm">{n.title}</h3>
+                        <NotificationBadge type={n.type} />
+                      </div>
+                      <p className="text-zinc-400 text-sm whitespace-pre-line break-words">{n.message}</p>
+                      <p className="text-zinc-600 text-xs mt-2 flex items-center gap-1">
+                        <Calendar className="size-3" />
+                        {formatDate(n.createdAt)}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeleteNotification(n.id)}
+                      className="text-zinc-500 hover:text-red-400 hover:bg-red-500/10 h-8 w-8 p-0 shrink-0"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ─── UsersTab and ContentTab are now memoized components outside AdminPage ──
 
   // ─── APPROVE / REJECT DIALOG ──────────────────────────────────────────────
 
   const ApproveRejectDialog = () => (
-    <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+    <Dialog
+      open={approveDialogOpen}
+      onOpenChange={(open) => {
+        if (!approveLoading) setApproveDialogOpen(open);
+      }}
+    >
       <DialogContent className="bg-zinc-900 border-zinc-800">
         <DialogHeader>
           <DialogTitle className={`text-white ${approveAction === 'approved' ? '' : ''}`}>
