@@ -1,9 +1,10 @@
 const CACHE_PREFIX = "dhan-kamao";
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const STATIC_CACHE = `${CACHE_PREFIX}-${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_PREFIX}-${CACHE_VERSION}-runtime`;
 const PRECACHE_URLS = [
   "/offline.html",
+  "/logo.svg",
   "/apple-touch-icon.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",

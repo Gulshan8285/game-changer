@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Share, Smartphone, X } from "lucide-react";
+import { Download, Share, X } from "lucide-react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -13,8 +14,7 @@ type BeforeInstallPromptEvent = Event & {
   }>;
 };
 
-const DISMISS_UNTIL_KEY = "pwa-install-dismiss-until";
-const DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+const INSTALLED_KEY = "pwa-installed";
 
 function isStandaloneMode() {
   if (typeof window === "undefined") {
@@ -54,13 +54,20 @@ function getPlatformInfo() {
   };
 }
 
-function canShowBanner() {
+function isMarkedInstalled() {
   if (typeof window === "undefined") {
     return false;
   }
 
-  const hideUntil = Number(window.localStorage.getItem(DISMISS_UNTIL_KEY) ?? 0);
-  return !hideUntil || hideUntil < Date.now();
+  return window.localStorage.getItem(INSTALLED_KEY) === "1";
+}
+
+function markInstalled() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(INSTALLED_KEY, "1");
 }
 
 export function PwaInstallPrompt() {
@@ -84,12 +91,15 @@ export function PwaInstallPrompt() {
     }
 
     const revealBanner = () => {
-      if (!isStandaloneMode() && canShowBanner()) {
+      if (!isStandaloneMode() && !isMarkedInstalled()) {
         setIsVisible(true);
       }
     };
 
-    if (isStandaloneMode()) {
+    if (isStandaloneMode() || isMarkedInstalled()) {
+      if (isStandaloneMode()) {
+        markInstalled();
+      }
       setIsInstalled(true);
       return;
     }
@@ -110,6 +120,7 @@ export function PwaInstallPrompt() {
     };
 
     const handleInstalled = () => {
+      markInstalled();
       setIsInstalled(true);
       setDeferredPrompt(null);
       setShowManualHelp(false);
@@ -143,13 +154,6 @@ export function PwaInstallPrompt() {
   }
 
   const dismissBanner = () => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        DISMISS_UNTIL_KEY,
-        String(Date.now() + DISMISS_COOLDOWN_MS),
-      );
-    }
-
     setShowManualHelp(false);
     setIsVisible(false);
   };
@@ -182,9 +186,13 @@ export function PwaInstallPrompt() {
       <div className="pointer-events-auto mx-auto max-w-xl overflow-hidden rounded-2xl border border-amber-500/20 bg-zinc-950/95 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(245,158,11,0.22),_transparent_55%)]" />
         <div className="relative flex items-start gap-3 p-4 sm:p-5">
-          <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25">
-            <Smartphone className="h-5 w-5" />
-          </div>
+          <Image
+            src="/logo.svg"
+            alt="Dhan Kamao logo"
+            width={44}
+            height={44}
+            className="mt-0.5 h-11 w-11 shrink-0 rounded-full object-cover shadow-lg shadow-amber-500/25"
+          />
 
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold sm:text-base">
