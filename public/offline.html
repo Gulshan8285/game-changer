@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dhan Kamao Offline</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font-family: Arial, sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(245, 158, 11, 0.22), transparent 45%),
+          #111111;
+        color: #ffffff;
+      }
+
+      .card {
+        width: min(100%, 420px);
+        padding: 28px;
+        border-radius: 24px;
+        border: 1px solid rgba(245, 158, 11, 0.24);
+        background: rgba(24, 24, 27, 0.94);
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.4);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 28px;
+      }
+
+      p {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.8);
+        line-height: 1.6;
+      }
+
+      a {
+        display: inline-block;
+        margin-top: 18px;
+        padding: 12px 18px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #f59e0b, #ea580c);
+        color: #ffffff;
+        text-decoration: none;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>You're offline</h1>
+      <p>
+        Dhan Kamao will load cached content when available. Reconnect to the
+        internet to refresh prices, account data, and live updates.
+      </p>
+      <a href="/">Try again</a>
+    </main>
+  </body>
+  </html>
