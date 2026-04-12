@@ -14,7 +14,9 @@ type BeforeInstallPromptEvent = Event & {
   }>;
 };
 
-const INSTALLED_KEY = "pwa-installed";
+const DISMISSED_AT_KEY = "pwa-install-dismissed-at";
+const LEGACY_INSTALLED_KEY = "pwa-installed";
+const DISMISS_COOLDOWN_MS = 1000 * 60 * 60 * 12;
 
 function isStandaloneMode() {
   if (typeof window === "undefined") {
@@ -27,8 +29,7 @@ function isStandaloneMode() {
 
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
-    Boolean(navigatorWithStandalone.standalone) ||
-    document.referrer.includes("android-app://")
+    Boolean(navigatorWithStandalone.standalone)
   );
 }
 
@@ -54,20 +55,43 @@ function getPlatformInfo() {
   };
 }
 
-function isMarkedInstalled() {
+function hasRecentDismissal() {
   if (typeof window === "undefined") {
     return false;
   }
 
-  return window.localStorage.getItem(INSTALLED_KEY) === "1";
+  const dismissedAt = window.localStorage.getItem(DISMISSED_AT_KEY);
+  const timestamp = Number(dismissedAt);
+
+  if (!timestamp) {
+    return false;
+  }
+
+  return Date.now() - timestamp < DISMISS_COOLDOWN_MS;
 }
 
-function markInstalled() {
+function rememberDismissal() {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.setItem(INSTALLED_KEY, "1");
+  window.localStorage.setItem(DISMISSED_AT_KEY, Date.now().toString());
+}
+
+function clearDismissal() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(DISMISSED_AT_KEY);
+}
+
+function clearLegacyInstalledFlag() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(LEGACY_INSTALLED_KEY);
 }
 
 export function PwaInstallPrompt() {
@@ -90,17 +114,31 @@ export function PwaInstallPrompt() {
       return;
     }
 
+    const syncInstallState = () => {
+      const installed = isStandaloneMode();
+
+      setIsInstalled(installed);
+
+      if (installed) {
+        clearDismissal();
+        clearLegacyInstalledFlag();
+        setDeferredPrompt(null);
+        setShowManualHelp(false);
+        setIsVisible(false);
+      }
+
+      return installed;
+    };
+
     const revealBanner = () => {
-      if (!isStandaloneMode() && !isMarkedInstalled()) {
+      if (!syncInstallState() && !hasRecentDismissal()) {
         setIsVisible(true);
       }
     };
 
-    if (isStandaloneMode() || isMarkedInstalled()) {
-      if (isStandaloneMode()) {
-        markInstalled();
-      }
-      setIsInstalled(true);
+    clearLegacyInstalledFlag();
+
+    if (syncInstallState()) {
       return;
     }
 
@@ -116,15 +154,25 @@ export function PwaInstallPrompt() {
       const installEvent = event as BeforeInstallPromptEvent;
       event.preventDefault();
       setDeferredPrompt(installEvent);
-      revealBanner();
+
+      if (!hasRecentDismissal()) {
+        setShowManualHelp(false);
+        setIsVisible(true);
+      }
     };
 
     const handleInstalled = () => {
-      markInstalled();
+      clearDismissal();
       setIsInstalled(true);
       setDeferredPrompt(null);
       setShowManualHelp(false);
       setIsVisible(false);
+    };
+
+    const handleFocus = () => {
+      if (!syncInstallState() && !hasRecentDismissal()) {
+        setIsVisible(true);
+      }
     };
 
     const displayModeMedia = window.matchMedia("(display-mode: standalone)");
@@ -136,6 +184,7 @@ export function PwaInstallPrompt() {
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     window.addEventListener("appinstalled", handleInstalled);
+    window.addEventListener("focus", handleFocus);
     displayModeMedia.addEventListener?.("change", handleDisplayModeChange);
 
     return () => {
@@ -145,6 +194,7 @@ export function PwaInstallPrompt() {
         handleBeforeInstallPrompt,
       );
       window.removeEventListener("appinstalled", handleInstalled);
+      window.removeEventListener("focus", handleFocus);
       displayModeMedia.removeEventListener?.("change", handleDisplayModeChange);
     };
   }, [pathname]);
@@ -154,6 +204,7 @@ export function PwaInstallPrompt() {
   }
 
   const dismissBanner = () => {
+    rememberDismissal();
     setShowManualHelp(false);
     setIsVisible(false);
   };
