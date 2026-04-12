@@ -14,9 +14,7 @@ type BeforeInstallPromptEvent = Event & {
   }>;
 };
 
-const DISMISSED_AT_KEY = "pwa-install-dismissed-at";
 const LEGACY_INSTALLED_KEY = "pwa-installed";
-const DISMISS_COOLDOWN_MS = 1000 * 60 * 60 * 12;
 
 function isStandaloneMode() {
   if (typeof window === "undefined") {
@@ -55,37 +53,6 @@ function getPlatformInfo() {
   };
 }
 
-function hasRecentDismissal() {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  const dismissedAt = window.localStorage.getItem(DISMISSED_AT_KEY);
-  const timestamp = Number(dismissedAt);
-
-  if (!timestamp) {
-    return false;
-  }
-
-  return Date.now() - timestamp < DISMISS_COOLDOWN_MS;
-}
-
-function rememberDismissal() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(DISMISSED_AT_KEY, Date.now().toString());
-}
-
-function clearDismissal() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.removeItem(DISMISSED_AT_KEY);
-}
-
 function clearLegacyInstalledFlag() {
   if (typeof window === "undefined") {
     return;
@@ -103,6 +70,7 @@ export function PwaInstallPrompt() {
   const [isInstalling, setIsInstalling] = useState(false);
   const [showManualHelp, setShowManualHelp] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
     if (pathname?.startsWith("/admin")) {
@@ -120,18 +88,18 @@ export function PwaInstallPrompt() {
       setIsInstalled(installed);
 
       if (installed) {
-        clearDismissal();
         clearLegacyInstalledFlag();
         setDeferredPrompt(null);
         setShowManualHelp(false);
         setIsVisible(false);
+        setIsDismissed(false);
       }
 
       return installed;
     };
 
     const revealBanner = () => {
-      if (!syncInstallState() && !hasRecentDismissal()) {
+      if (!syncInstallState() && !isDismissed) {
         setIsVisible(true);
       }
     };
@@ -155,22 +123,22 @@ export function PwaInstallPrompt() {
       event.preventDefault();
       setDeferredPrompt(installEvent);
 
-      if (!hasRecentDismissal()) {
+      if (!isDismissed) {
         setShowManualHelp(false);
         setIsVisible(true);
       }
     };
 
     const handleInstalled = () => {
-      clearDismissal();
       setIsInstalled(true);
       setDeferredPrompt(null);
       setShowManualHelp(false);
       setIsVisible(false);
+      setIsDismissed(false);
     };
 
     const handleFocus = () => {
-      if (!syncInstallState() && !hasRecentDismissal()) {
+      if (!syncInstallState() && !isDismissed) {
         setIsVisible(true);
       }
     };
@@ -197,14 +165,14 @@ export function PwaInstallPrompt() {
       window.removeEventListener("focus", handleFocus);
       displayModeMedia.removeEventListener?.("change", handleDisplayModeChange);
     };
-  }, [pathname]);
+  }, [isDismissed, pathname]);
 
   if (pathname?.startsWith("/admin") || isInstalled || !isVisible) {
     return null;
   }
 
   const dismissBanner = () => {
-    rememberDismissal();
+    setIsDismissed(true);
     setShowManualHelp(false);
     setIsVisible(false);
   };
